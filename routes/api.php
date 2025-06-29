@@ -1,9 +1,9 @@
 <?php
-
+/*
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
-
-Route::post('register', [AuthController::class, 'register']);  // تسجيل حساب جديد
+Route::post('/register', [AuthController::class, 'register']);
+  // تسجيل حساب جديد
 Route::post('/verify-code/{id}', [AuthController::class, 'verifyCode']);
 Route::post('/resend-verification-code/{id}', [AuthController::class, 'resendVerificationCode']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -13,3 +13,5 @@ Route::post('/update/profile', [AuthController::class, 'updateProfile'])->middle
 Route::post('/reset/password',[AuthController::class,'resetPassword'])->middleware('owns-profile');
 Route::post('/forget/password',[AuthController::class,'forgetPassword']);
 Route::post('/confirm/resetcode',[AuthController::class,'confirmResetCode']);
+Route::post('logout', [AuthController::class, 'logout']);
+*/

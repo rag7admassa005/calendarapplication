@@ -13,10 +13,12 @@ return new class extends Migration
     {
         Schema::create('invitations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('appointment_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('sender_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('receiver_id')->constrained('users')->cascadeOnDelete();
-            $table->enum('status', ['pending', 'accepted', 'rejected'])->default('pending');
+            $table->foreignId('appointment_id')->constrained('appointments')->cascadeOnDelete();
+            $table->foreignId('invited_user_id')->constrained('users')->cascadeOnDelete();
+            $table->nullableMorphs('invited_by'); // المدير أو المساعد اللي أرسل الدعوة
+            $table->enum('status', ['pending', 'accepted', 'rejected', 'cancelled'])->default('pending');
+            $table->timestamp('sent_at')->nullable();
+            $table->timestamp('responded_at')->nullable();
             $table->timestamps();
         });
     }
