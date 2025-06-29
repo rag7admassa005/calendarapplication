@@ -13,9 +13,9 @@ return new class extends Migration
     {
         Schema::create('assistant_activity', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('assistant_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('permission_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('appointment_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('assistant_id')->constrained('assistants')->cascadeOnDelete();
+            $table->foreignId('permission_id')->constrained('permissions')->cascadeOnDelete();
+            $table->foreignId('appointment_id')->constrained('appointments')->cascadeOnDelete();
             $table->timestamp('executed_at')->nullable();
             $table->timestamps();
         });

@@ -13,14 +13,13 @@ return new class extends Migration
     {
         Schema::create('appointments', function (Blueprint $table) {
             $table->id();
-            $table->date('date');
+               $table->date('date');
             $table->time('start_time');
             $table->time('end_time');
-            $table->integer('duration');
+            $table->integer('duration'); // طول الموعد بالدقائق، يختار المستخدم 30 أو 60 حسب الجدول
             $table->enum('status', ['pending', 'approved', 'rejected', 'rescheduled', 'cancelled'])->default('pending');
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('manager_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('assistant_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('manager_id')->constrained('managers')->cascadeOnDelete();
+            $table->foreignId('assistant_id')->nullable()->constrained('assistants')->nullOnDelete();
             $table->timestamps();
         });
     }

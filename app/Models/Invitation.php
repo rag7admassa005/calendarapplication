@@ -3,14 +3,28 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Invitation extends Model
 {
-    
-    protected $fillable = ['appointment_id', 'inviter_id', 'invitee_id', 'status'];
+      protected $fillable = [
+        'appointment_id', 'invited_user_id', 'invited_by_id', 'invited_by_type',
+        'status', 'sent_at', 'responded_at'
+    ];
 
-    public function appointment() { return $this->belongsTo(Appointment::class); }
-    public function inviter() { return $this->belongsTo(User::class, 'inviter_id'); }
-    public function invitee() { return $this->belongsTo(User::class, 'invitee_id'); }
+    public function appointment(): BelongsTo
+    {
+        return $this->belongsTo(Appointment::class);
+    }
+
+    public function invitedUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'invited_user_id');
+    }
+
+    public function invitedBy(): MorphTo
+    {
+        return $this->morphTo();
+    }
 }
-

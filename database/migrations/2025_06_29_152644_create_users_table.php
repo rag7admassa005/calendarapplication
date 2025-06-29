@@ -11,13 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-         Schema::create('users', function (Blueprint $table) {
+        Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('first_name');
-             $table->string('last_name');
-             $table->enum('role', ['super_admin','manager','assistant','user'])->default('user');
+            $table->string('last_name');
             $table->string('email')->unique();
-             $table->string('password');
+            $table->string('password');
             $table->timestamp('email_verified_at')->nullable();
             $table->string('verification_code')->nullable();
             $table->dateTime('code_expires_at')->nullable();
@@ -25,9 +24,10 @@ return new class extends Migration
             $table->string('image')->nullable();
             $table->string('address')->nullable();
             $table->date('date_of_birth')->nullable();
-            $table->foreignId('job_id')->constrained('jobs')->onDelete('cascade');
-            $table->foreignId('manager_id')->nullable()->constrained('users')->onDelete('cascade');
-            $table->rememberToken();
+$table->foreignId('manager_id')->constrained('managers')->cascadeOnDelete();
+$table->foreignId('job_id')->constrained('jobs')->cascadeOnDelete();
+
+            
             $table->timestamps();
         });
     }
