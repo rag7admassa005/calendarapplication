@@ -16,7 +16,7 @@ class User extends Authenticatable implements JWTSubject
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
-  protected $fillable = ['first_name', 'last_name', 'email', 'password', 'manager_id', 'job_id'];
+  protected $fillable = ['first_name', 'last_name', 'email', 'password', 'email_verified_at','verification_code','code_expires_at','phone_number','image','address','date_of_birth','manager_id', 'job_id'];
 
     public function manager(): BelongsTo
     {

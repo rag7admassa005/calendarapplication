@@ -24,8 +24,8 @@ return new class extends Migration
             $table->string('image')->nullable();
             $table->string('address')->nullable();
             $table->date('date_of_birth')->nullable();
-$table->foreignId('manager_id')->constrained('managers')->cascadeOnDelete();
-$table->foreignId('job_id')->constrained('jobs')->cascadeOnDelete();
+            $table->foreignId('manager_id')->constrained('managers')->cascadeOnDelete();
+            $table->foreignId('job_id')->constrained('jobs')->cascadeOnDelete();
 
             
             $table->timestamps();

@@ -8,10 +8,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Tymon\JWTAuth\Contracts\JWTSubject;
 
-class Manager extends Model
+use Illuminate\Foundation\Auth\User as Authenticatable;
+class Manager extends  Authenticatable implements JWTSubject
 {
-    protected $fillable = ['email', 'password', 'department'];
+      public function getJWTIdentifier()
+    {
+        return $this->getKey();
+    }
+
+    public function getJWTCustomClaims()
+    {
+        return [];
+    }
+    protected $fillable = ['email', 'password', 'department','email_verified_at','verification_code','code_expires_at','must_change_password'];
 
     public function jobs(): HasMany
     {
