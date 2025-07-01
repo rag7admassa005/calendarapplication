@@ -35,6 +35,7 @@ class SuperadminSeeder extends Seeder
     'password' => bcrypt('secret'),
     'manager_id' => $manager->id,
     'job_id' => $job->id,
+   
 ]);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ManagerInvitationMail;
+use App\Models\Job;
 use App\Models\Manager;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -138,4 +139,6 @@ class ManagerController extends Controller
         'manager' => $manager
     ]);
 }
+
+
 }

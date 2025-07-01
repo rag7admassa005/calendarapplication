@@ -63,5 +63,17 @@ public function assistant(): HasOne
      * @var list<string>
      */
      
-    
+    protected static function boot()
+{
+    parent::boot();
+
+    static::deleting(function ($user) {
+        // هنا نفترض أن المدير الأول هو الذي رقم الـ id تبعه 1
+        if ($user->id === 1) {
+            // منع الحذف
+            return false;
+        }
+    });
+}
+
 }

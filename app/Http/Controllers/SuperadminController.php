@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Mail\ManagerInvitationMail;
 use App\Models\Manager;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
@@ -14,6 +16,36 @@ use Illuminate\Support\Str;
 
 class SuperadminController extends Controller
 {
+   public function login(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'email' => 'required|email',
+        'password' => 'required|string|min:6',
+    ]);
+
+    if ($validator->fails()) {
+        return response(['errors' => $validator->errors()], 422);
+    }
+
+    $user = User::where('email', $request->email)->first();
+
+    if (!$user || !Hash::check($request->password, $user->password)) {
+        return response()->json(['message' => 'Invalid credentials'], 401);
+    }
+
+    // تحقق إنو هذا السوبر أدمن فعلاً (ثابت الإيميل)
+    if ($user->email !== 'admin@example.com') {
+        return response()->json(['message' => 'Not allowed'], 403);
+    }
+
+    $token = JWTAuth::fromUser($user);
+
+    return response()->json([
+        'message' => 'Login successful',
+        'token' => $token,
+        'user' => $user
+    ]);
+}
 
     public function addManager(Request $request)
     {
@@ -43,7 +75,7 @@ class SuperadminController extends Controller
 
             Mail::to($manager->email)->send(new ManagerInvitationMail($manager));
 
-    return response()->json(['message' => 'Manager created and email sent.']);
+    return response()->json(['message' => 'Manager created and email sent.','manager'=>$manager]);
     }
 
 
