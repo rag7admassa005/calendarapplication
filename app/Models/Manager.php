@@ -62,4 +62,18 @@ public function assistants(): HasMany
         return $this->hasMany(Assistant::class);
     }
 
+    protected static function boot()
+{
+    parent::boot();
+
+    static::deleting(function ($manager) {
+        // هنا نفترض أن المدير الأول هو الذي رقم الـ id تبعه 1
+        if ($manager->id === 1) {
+            // منع الحذف
+            return false;
+        }
+    });
+}
+
+
 }

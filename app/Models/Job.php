@@ -19,4 +19,17 @@ class Job extends Model
     {
         return $this->hasMany(User::class);
     }
+
+       protected static function boot()
+{
+    parent::boot();
+
+    static::deleting(function ($job) {
+        // هنا نفترض أن المدير الأول هو الذي رقم الـ id تبعه 1
+        if ($job->id === 1) {
+            // منع الحذف
+            return false;
+        }
+    });
+}
 }

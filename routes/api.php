@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\JobController;
 use App\Http\Controllers\ManagerController;
 use App\Http\Controllers\SuperadminController;
 use Illuminate\Support\Facades\Route;
@@ -20,13 +21,29 @@ Route::middleware('auth:api')->delete('/logout', [AuthController::class, 'logout
 
 // -------------------- Superadmin Routes --------------------
 
-Route::post('/managers', [SuperadminController::class, 'addManager']);
-Route::post('/managers/{id}', [SuperadminController::class, 'deleteManager']);
-Route::get('/managers', [SuperadminController::class, 'showAllManagers']);
-Route::get('/managers/{id}', [SuperadminController::class, 'showManager']);
+Route::post('/superadmin/login', [SuperadminController::class, 'login']);
+Route::middleware('superadmin')->group(function () {
+    Route::post('/managers', [SuperadminController::class, 'addManager']);
+    Route::post('/managers/{id}', [SuperadminController::class, 'deleteManager']);
+    Route::get('/managers', [SuperadminController::class, 'showAllManagers']);
+    Route::get('/managers/{id}', [SuperadminController::class, 'showManager']);
+});
 
 // -------------------- Manager Routes --------------------
 
 Route::post('/manager/set-password', [ManagerController::class, 'setManagerPassword']);
 Route::post('/manager/login', [ManagerController::class, 'managerLogin']);
 Route::post('/manager/verify-code', [ManagerController::class, 'resendVerificationCode']);
+
+// -------------------- Job Routes --------------------
+
+// عامة: يمكن للمستخدم رؤية وظائف مدير معين
+Route::get('/managers/{manager_id}/jobs', [JobController::class, 'showJobsByManager']);
+
+// محمية: للمدير فقط
+Route::middleware('manager')->group(function () {
+    Route::post('/manager/jobs', [JobController::class, 'addJob']);
+    Route::post('/emanager/jobs/{job_id}', [JobController::class, 'editJob']);
+    Route::post('/dmanager/jobs/{job_id}', [JobController::class, 'deletJob']);
+    Route::get('/show/manager/jobs', [JobController::class, 'myJobs']);
+});
