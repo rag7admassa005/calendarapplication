@@ -3,7 +3,9 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\JobController;
 use App\Http\Controllers\ManagerController;
+use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SuperadminController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 // -------------------- Auth Routes --------------------
@@ -14,7 +16,6 @@ Route::post('/resendCode/{user_id}', [AuthController::class, 'resendVerification
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/forgotpassword', [AuthController::class, 'forgetPassword']);
 Route::post('/resetcode', [AuthController::class, 'confirmResetCode']);
-
 Route::middleware('auth:api')->get('/viewProfile', [AuthController::class, 'viewProfile']);
 Route::middleware('auth:api')->post('/updateProfile', [AuthController::class, 'updateProfile']);
 Route::middleware('auth:api')->delete('/logout', [AuthController::class, 'logout']);
@@ -47,3 +48,8 @@ Route::middleware('manager')->group(function () {
     Route::post('/dmanager/jobs/{job_id}', [JobController::class, 'deletJob']);
     Route::get('/show/manager/jobs', [JobController::class, 'myJobs']);
 });
+
+// -------------------- Schedule & Appointment Routes --------------------
+
+Route::middleware('auth:api')->get('/managerschedule', [UserController::class, 'viewManagerSchedule']);
+// Route::middleware('auth:api')->post('/appointmentrequest', [UserController::class, 'requestAppointment']);
