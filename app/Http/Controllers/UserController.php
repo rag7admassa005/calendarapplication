@@ -1,17 +1,22 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use Illuminate\Support\Facades\Mail;
+//use Illuminate\Support\Facades\Log;
 use App\Models\AppointmentRequest;
 use App\Models\Schedule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
+use Illuminate\Foundation\Auth\User;
+
+use App\Mail\AppointmentCancelledMail;
+use App\Models\Invitation;
 
 class UserController extends Controller
-{
-    public function viewManagerSchedule(Request $request)
+{ 
+     public function viewManagerSchedule(Request $request)
     {
         $user = Auth::guard('api')->user();
 
@@ -28,7 +33,8 @@ class UserController extends Controller
         foreach ($schedules as $schedule) {
             $start = Carbon::parse($schedule->start_time);
             $end = Carbon::parse($schedule->end_time);
-            $duration = $schedule->meeting_duration_1 ?? 30; // افتراضي 30
+          $duration = in_array($schedule->meeting_duration_1, [30, 60]) ? $schedule->meeting_duration_1 : 30;
+
 
             $slots = [];
 
@@ -48,6 +54,7 @@ class UserController extends Controller
             }
 
             $result[] = [
+                'schedule_id'  => $schedule->id, // مشان الفرونت ليميز الفترات
                 'day_of_week' => $schedule->day_of_week,
                 'slots'       => $slots,
             ];
@@ -59,65 +66,216 @@ class UserController extends Controller
         ]);
     }
 
-    /*
-    public function requestAppointment(Request $request)
-    {
-        $user = Auth::guard('api')->user();
+public function requestAppointment(Request $request)
+{
+    $user = Auth::guard('api')->user();
 
-        $validator = Validator::make($request->all(), [
-            'preferred_date'        => 'required|date|after:today',
-            'preferred_start_time'  => 'required|date_format:H:i',
-            'preferred_duration'    => 'required|in:30,60',
-            'reason'                => 'required|string|max:500',
-        ]);
+    $validator = Validator::make($request->all(), [
+        'preferred_date'       => 'required|date|after:today',
+        'preferred_start_time' => 'required|date_format:H:i',
+        'reason'               => 'required|string',
+    ]);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $manager = $user->manager;
-
-        if (!$manager) {
-            return response()->json(['message' => 'Manager not found.'], 404);
-        }
-
-        // حساب وقت نهاية الموعد بناءً على المدة
-        $startTime = Carbon::createFromFormat('H:i', $request->preferred_start_time);
-        $endTime = $startTime->copy()->addMinutes($request->preferred_duration);
-
-        // ✅ تحقق من تداخل المواعيد مع مواعيد أخرى
-        $conflict = AppointmentRequest::where('manager_id', $manager->id)
-            ->where('preferred_date', $request->preferred_date)
-            ->where(function ($q) use ($startTime, $endTime) {
-                $q->whereBetween('preferred_start_time', [$startTime->format('H:i'), $endTime->subMinute()->format('H:i')])
-                  ->orWhereBetween('preferred_end_time', [$startTime->format('H:i'), $endTime->format('H:i')])
-                  ->orWhere(function ($q2) use ($startTime, $endTime) {
-                      $q2->where('preferred_start_time', '<', $startTime->format('H:i'))
-                         ->where('preferred_end_time', '>', $endTime->format('H:i'));
-                  });
-            })
-            ->exists();
-
-        if ($conflict) {
-            return response()->json(['message' => 'This time is already booked.'], 409);
-        }
-
-        // إنشاء الموعد
-        $appointment = AppointmentRequest::create([
-            'user_id'              => $user->id,
-            'manager_id'           => $manager->id,
-            'preferred_date'       => $request->preferred_date,
-            'preferred_start_time' => $startTime->format('H:i'),'preferred_end_time'   => $endTime->format('H:i'),
-            'preferred_duration'   => $request->preferred_duration,
-            'reason'               => $request->reason,
-            'status'               => 'pending',
-            'requested_at'         => now(),
-        ]);
-
-        return response()->json([
-            'message'     => 'Appointment request submitted successfully.',
-            'appointment' => $appointment
-        ], 201);
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
     }
-    */
+
+    $manager_id = $user->manager_id;
+    $date       = $request->preferred_date;
+    $start_time = $request->preferred_start_time;
+    $day        = strtolower(Carbon::parse($date)->format('l'));
+
+    // جلب جدول المواعيد للمدير
+    $schedule = Schedule::where('manager_id', $manager_id)
+        ->where('day_of_week', $day)
+        ->where('is_available', true)
+        ->where('start_time', '<=', $start_time)
+        ->where('end_time', '>', $start_time)
+        ->first();
+
+    if (!$schedule) {
+        return response()->json(['message' => 'The manager is not available at this time.'], 400);
+    }
+
+    $duration = $schedule->meeting_duration_1 ?? 30;
+    $end_time = Carbon::createFromFormat('H:i', $start_time)->addMinutes($duration)->format('H:i');
+
+    // التحقق من تعارض مع مواعيد مقبولة فقط
+    $conflict = AppointmentRequest::where('manager_id', $manager_id)
+        ->where('preferred_date', $date)
+        ->where('status', 'accepted')
+        ->where(function ($query) use ($start_time, $end_time) {
+            $query->whereBetween('preferred_start_time', [$start_time, $end_time])
+                ->orWhereBetween('preferred_end_time', [$start_time, $end_time])
+                ->orWhere(function ($q) use ($start_time, $end_time) {
+                    $q->where('preferred_start_time', '<', $start_time)
+                      ->where('preferred_end_time', '>', $end_time);
+                });
+        })
+        ->exists();
+
+    if ($conflict) {
+        return response()->json(['message' => 'This time slot has already been booked.'], 409);
+    }
+
+    // تخزين الطلب في جدول appointment_requests
+    $appointment = AppointmentRequest::create([
+        'user_id'               => $user->id,
+        'manager_id'           => $manager_id,
+        'preferred_date'       => $date,
+        'preferred_start_time' => $start_time,
+        'preferred_end_time'   => $end_time,
+        'preferred_duration'   => $duration,
+        'reason'               => $request->reason,
+        'status'               => 'pending',
+        'requested_at'         => now(),
+    ]);
+
+    // إشعار المدير على الإيميل
+    $manager = \App\Models\Manager::find($manager_id);
+    if ($manager && $manager->email) {
+        Mail::to($manager->email)->send(
+            new \App\Mail\AppointmentRequestedMail($user, $appointment)
+        );
+    }
+
+    return response()->json([
+        'message'     => 'Appointment request submitted successfully. Status is pending.',
+        'appointment' => $appointment,
+    ], 201);
+}
+
+    public function rescheduleAppointment(Request $request, $id)
+{
+    $user = Auth::guard('api')->user();
+
+    $appointment = AppointmentRequest::where('id', $id)
+        ->where('user_id', $user->id)
+       ->whereNotIn('status', ['pending'])
+        ->first();
+
+    if (!$appointment) {
+        return response()->json(['message' => 'Appointment not found or cannot be rescheduled.'], 404);
+    }
+
+    // تحقق من أن الموعد لم يبدأ بعد
+    $appointmentDateTime = Carbon::parse("{$appointment->preferred_date} {$appointment->preferred_start_time}");
+    if (now()->gt($appointmentDateTime)) {
+        return response()->json(['message' => 'You cannot reschedule an appointment that has already started or passed.'], 403);
+    }
+
+    // تحقق من الزمن المتبقي (يسمح بإعادة الجدولة قبل 12 ساعة من الموعد)
+    if ($appointment->status === 'accepted' && now()->diffInHours($appointmentDateTime, false) < 12) {
+        return response()->json(['message' => 'You can only reschedule up to 12 hours before the appointment.'], 403);
+    }
+    $validator = Validator::make($request->all(), [
+        'preferred_date' => 'required|date|after:today',
+        'preferred_start_time' => 'required|date_format:H:i',
+        'reason' => 'required|string',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+        // الحصول على مدة الموعد من جدول الجدول الزمني
+    $day = strtolower(Carbon::parse($request->preferred_date)->format('l'));
+    $schedule = Schedule::where('manager_id', $user->manager_id)
+        ->where('day_of_week', $day)
+        ->where('is_available', true)
+        ->where('start_time', '<=', $request->preferred_start_time)
+        ->first();
+
+    if (!$schedule) {
+        return response()->json(['message' => 'The manager is not available on this day/time.'], 400);
+    }
+
+    $duration = $schedule->meeting_duration_1 ?? 30;
+    $end_time = Carbon::createFromFormat('H:i', $request->preferred_start_time)
+        ->addMinutes($duration)
+        ->format('H:i');
+
+
+    // التحقق من التعارض
+    $conflict = AppointmentRequest::where('manager_id', $user->manager_id)
+        ->where('preferred_date', $request->preferred_date)
+        ->where('id', '!=', $id)
+        ->whereIn('status', ['pending', 'accepted'])
+        ->where(function ($query) use ($request, $end_time) {
+            $query->whereBetween('preferred_start_time', [$request->preferred_start_time, $end_time])
+                ->orWhereBetween('preferred_end_time', [$request->preferred_start_time, $end_time])
+                ->orWhere(function ($query) use ($request, $end_time) {
+                    $query->where('preferred_start_time', '<', $request->preferred_start_time)
+                        ->where('preferred_end_time', '>', $end_time);
+                });
+        })
+        ->exists();
+
+    if ($conflict) {
+        return response()->json(['message' => 'The selected time is already booked or pending.'], 409);
+    }
+
+    $appointment->update([
+        'preferred_date' => $request->preferred_date,
+        'preferred_start_time' => $request->preferred_start_time,
+        'preferred_end_time' => $end_time,
+        'preferred_duration' => $duration,
+        'reason' => $request->reason,
+        'status' => 'pending',
+        'requested_at' => now(),
+    ]);
+
+    $manager = $appointment->manager;
+    if ($manager && $manager->email) {
+        Mail::to($manager->email)->send(new \App\Mail\AppointmentRequestedMail($user, $appointment));
+    }
+
+    return response()->json(['message' => 'Appointment rescheduled successfully and is now pending.'], 200);
+}
+
+public function cancelAppointment(Request $request, $id)
+{
+    $user = Auth::guard('api')->user();
+
+    $validator = Validator::make($request->all(), [
+        'reason' => 'required|string|max:1000',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    $appointment = AppointmentRequest::where('id', $id)
+        ->where('user_id', $user->id)
+        ->whereNotIn('status', ['cancelled', 'rejected'])
+        ->first();
+
+    if (!$appointment) {
+        return response()->json(['message' => 'Appointment not found or already cancelled/rejected.'], 404);
+    }
+
+    $appointmentTime = Carbon::parse("{$appointment->preferred_date} {$appointment->preferred_start_time}");
+    if (now()->gt($appointmentTime)) {
+        return response()->json(['message' => 'Cannot cancel an appointment that has already started.'], 403);
+    }
+
+    // شرط الزمن: لا يُسمح بالإلغاء قبل أقل من 4 ساعات من وقت الموعد
+    if (now()->diffInHours($appointmentTime, false) < 4) {
+        return response()->json(['message' => 'You can only cancel at least 4 hours before the appointment.'], 403);
+    }
+
+    $appointment->status = 'cancelled';
+    $appointment->save();
+
+    $manager = $appointment->manager;
+    if ($manager && $manager->email) {
+        Mail::to($manager->email)->send(new AppointmentCancelledMail(
+            $user,
+            $appointment,
+            $request->reason
+        ));
+    }
+
+    return response()->json(['message' => 'Appointment cancelled successfully.'], 200);
+}
+
 }

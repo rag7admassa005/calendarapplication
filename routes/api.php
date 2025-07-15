@@ -52,4 +52,9 @@ Route::middleware('manager')->group(function () {
 // -------------------- Schedule & Appointment Routes --------------------
 
 Route::middleware('auth:api')->get('/managerschedule', [UserController::class, 'viewManagerSchedule']);
-// Route::middleware('auth:api')->post('/appointmentrequest', [UserController::class, 'requestAppointment']);
+Route::middleware('auth:api')->post('/appointmentrequest', [UserController::class, 'requestAppointment']);
+Route::middleware('auth:api')->post('/appointments/{id}/cancel', [UserController::class, 'cancelAppointment']);
+Route::middleware('auth:api')->post('/appointments/{id}/reschedule', [UserController::class, 'rescheduleAppointment']);
+Route::middleware('auth:api')->get('/my-invitations', [UserController::class, 'myInvitations']);
+Route::middleware('auth:api')->post('/invitations/{id}/accept', [UserController::class, 'acceptInvitation']);
+Route::middleware('auth:api')->post('/invitations/{id}/reject', [UserController::class, 'rejectInvitation']);
