@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\JobController;
+use App\Http\Controllers\ManageAppointmentController;
 use App\Http\Controllers\ManagerController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SuperadminController;
@@ -32,7 +33,8 @@ Route::middleware('superadmin')->group(function () {
 
 // -------------------- Manager Routes --------------------
 
-Route::post('/manager/set-password', [ManagerController::class, 'setManagerPassword']);
+Route::post('
+', [ManagerController::class, 'setManagerPassword']);
 Route::post('/manager/login', [ManagerController::class, 'managerLogin']);
 Route::post('/manager/verify-code', [ManagerController::class, 'resendVerificationCode']);
 
@@ -51,5 +53,15 @@ Route::middleware('manager')->group(function () {
 
 // -------------------- Schedule & Appointment Routes --------------------
 
-Route::middleware('auth:api')->get('/managerschedule', [UserController::class, 'viewManagerSchedule']);
+//Route::middleware('auth:api')->get('/managerschedule', [UserController::class, 'viewManagerSchedule']);
 // Route::middleware('auth:api')->post('/appointmentrequest', [UserController::class, 'requestAppointment']);
+// Route::post('add/schedule',[ScheduleController::class,'addSchedule']);
+// Route::post('update/schedule/{manager_id}',[ScheduleController::class,'updateSchedule']);
+// Route::get('/show/manager/schedule', [ScheduleController::class,'getSchedule']);
+
+//--------------------Manager Schedule---------------------
+ Route::post('/add/schedule', [ScheduleController::class, 'addSchedule']);
+ Route::post('update/schedule/{id}', [ScheduleController::class, 'updateSchedule']);
+Route::get('show/manager/schedule', [ScheduleController::class, 'viewManagerSchedule']);
+
+
