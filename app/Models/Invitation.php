@@ -8,14 +8,20 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Invitation extends Model
 {
-      protected $fillable = [
-        'appointment_id', 'invited_user_id', 'invited_by_id', 'invited_by_type',
-        'status', 'sent_at', 'responded_at'
+    protected $fillable = [
+        'invited_user_id',
+        'related_to_type',
+        'related_to_id',
+        'invited_by_type',
+        'invited_by_id',
+        'status',
+        'sent_at',
+        'responded_at',
     ];
 
-    public function appointment(): BelongsTo
+    public function relatedTo(): MorphTo
     {
-        return $this->belongsTo(Appointment::class,'appointment_id');
+        return $this->morphTo();
     }
 
     public function invitedUser(): BelongsTo

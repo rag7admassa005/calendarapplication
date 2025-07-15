@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('invitations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('appointment_id')->constrained('appointments')->cascadeOnDelete();
+            $table->nullableMorphs('related_to'); 
             $table->foreignId('invited_user_id')->constrained('users')->cascadeOnDelete();
             $table->nullableMorphs('invited_by'); // المدير أو المساعد اللي أرسل الدعوة
             $table->enum('status', ['pending', 'accepted', 'rejected', 'cancelled'])->default('pending');

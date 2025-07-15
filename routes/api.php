@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\JobController;
+use App\Http\Controllers\ManageAppointmentController;
 use App\Http\Controllers\ManagerController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SuperadminController;
@@ -51,6 +52,7 @@ Route::middleware('manager')->group(function () {
 
 // -------------------- Schedule & Appointment Routes --------------------
 
+// راوتات المستخدم لحجز المواعيد والتعامل مع الدعوات
 Route::middleware('auth:api')->get('/managerschedule', [UserController::class, 'viewManagerSchedule']);
 Route::middleware('auth:api')->post('/appointmentrequest', [UserController::class, 'requestAppointment']);
 Route::middleware('auth:api')->post('/appointments/{id}/cancel', [UserController::class, 'cancelAppointment']);
@@ -58,3 +60,8 @@ Route::middleware('auth:api')->post('/appointments/{id}/reschedule', [UserContro
 Route::middleware('auth:api')->get('/my-invitations', [UserController::class, 'myInvitations']);
 Route::middleware('auth:api')->post('/invitations/{id}/accept', [UserController::class, 'acceptInvitation']);
 Route::middleware('auth:api')->post('/invitations/{id}/reject', [UserController::class, 'rejectInvitation']);
+
+// راوتات المدير لإدارة الجدول الزمني
+Route::post('/add/schedule', [ScheduleController::class, 'addSchedule']);
+Route::post('/update/schedule/{id}', [ScheduleController::class, 'updateSchedule']);
+Route::get('/show/manager/schedule', [ScheduleController::class, 'viewManagerSchedule']);

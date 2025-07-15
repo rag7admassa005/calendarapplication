@@ -114,7 +114,7 @@ class ManagerController extends Controller
     $manager = Manager::where('email', $request->email)->first();
 
     if (!$manager) {
-        return response([$validator->errors()], 422);
+        return response(['message'=>'manager is not found'], 404);
     }
 
      if ($manager->must_change_password) {
