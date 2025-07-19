@@ -10,12 +10,16 @@ return [
 
     'api' => [ // ✅ لازم يكون داخل guards
         'driver' => 'jwt',
-        'provider' => 'users',
+        'provider' =>'users',
     ],
 
      'manager' => [ // ✅ لازم يكون داخل guards
         'driver' => 'jwt',
-        'provider' => 'managers',
+        'provider' =>'managers',
+    ],
+    'assistant' => [
+        'driver' => 'session',
+        'provider' => 'assistants',
     ],
 ],
 
@@ -47,7 +51,10 @@ return [
             'driver' => 'eloquent',
             'model' =>  App\Models\Manager::class,
         ],
-
+ 'assistants' => [
+        'driver' => 'eloquent',
+        'model' => App\Models\Assistant::class,
+    ],
 
         // 'users' => [
         //     'driver' => 'database',

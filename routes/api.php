@@ -23,7 +23,7 @@ Route::middleware('auth:api')->delete('/logout', [AuthController::class, 'logout
 
 // -------------------- Superadmin Routes --------------------
 
-Route::post('/superadmin/login', [SuperadminController::class, 'login']);
+Route::post('/superadmin/login', [SuperadminController::class, 'adminLogin']);
 Route::middleware('superadmin')->group(function () {
     Route::post('/managers', [SuperadminController::class, 'addManager']);
     Route::post('/managers/{id}', [SuperadminController::class, 'deleteManager']);
@@ -34,7 +34,6 @@ Route::middleware('superadmin')->group(function () {
 // -------------------- Manager Routes --------------------
 
 Route::post('/manager/set-password', [ManagerController::class, 'setManagerPassword']);
-Route::post('/manager/login', [ManagerController::class, 'managerLogin']);
 Route::post('/manager/verify-code', [ManagerController::class, 'resendVerificationCode']);
 
 // -------------------- Job Routes --------------------
@@ -62,6 +61,20 @@ Route::middleware('auth:api')->post('/invitations/{id}/accept', [UserController:
 Route::middleware('auth:api')->post('/invitations/{id}/reject', [UserController::class, 'rejectInvitation']);
 
 // راوتات المدير لإدارة الجدول الزمني
+Route::middleware('manager')->group(function () {
 Route::post('/add/schedule', [ScheduleController::class, 'addSchedule']);
 Route::post('/update/schedule/{id}', [ScheduleController::class, 'updateSchedule']);
 Route::get('/show/manager/schedule', [ScheduleController::class, 'viewManagerSchedule']);
+});
+
+Route::middleware('manager')->group(function () {
+Route::get('show/requests', [ManageAppointmentController::class, 'showAppointmentRequests']);
+Route::post('appointments/approve/{request_id}', [ManageAppointmentController::class, 'approveAppointmentRequest']);
+Route::post('appointments/reschedule/{id}', [ManageAppointmentController::class, 'rescheduleAppointmentRequest']);
+Route::post('/appointments/cancel/{id}', [ManageAppointmentController::class, 'cancelAppointmentRequest']);
+Route::get('/manager/users', [ManageAppointmentController::class,'getUsers']);
+Route::post('/manager/appointments/invite-existing', [ManageAppointmentController::class, 'inviteUserToAppointment']);
+Route::get('/manager/invitations', [ManageAppointmentController::class, 'getSentInvitations']);
+Route::post('/manager/appointment-notes', [ManageAppointmentController::class, 'addNote']);
+Route::get('/manager/appointment-notes/{appointmentId}', [ManageAppointmentController::class, 'getNotes']);
+});

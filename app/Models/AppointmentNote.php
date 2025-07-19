@@ -8,7 +8,11 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class AppointmentNote extends Model
 {
-       protected $fillable = ['appointment_id', 'notes'];
+         protected $fillable = ['appointment_id',
+        'author_type',
+        'author_id',
+        'notes',];
+
 
     public function appointment(): BelongsTo
     {

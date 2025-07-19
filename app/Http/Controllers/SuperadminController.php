@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ManagerInvitationMail;
+use App\Models\Assistant;
 use App\Models\Manager;
 use App\Models\User;
 use Carbon\Carbon;
@@ -16,7 +17,8 @@ use Illuminate\Support\Str;
 
 class SuperadminController extends Controller
 {
-   public function login(Request $request)
+//   
+public function adminLogin(Request $request)
 {
     $validator = Validator::make($request->all(), [
         'email' => 'required|email',
@@ -27,25 +29,65 @@ class SuperadminController extends Controller
         return response(['errors' => $validator->errors()], 422);
     }
 
-    $user = User::where('email', $request->email)->first();
+    $email = $request->email;
+    $password = $request->password;
 
-    if (!$user || !Hash::check($request->password, $user->password)) {
-        return response()->json(['message' => 'Invalid credentials'], 401);
+    // === 1. تحقق من السوبر أدمن ===
+    $superAdmin = User::where('email', $email)->first();
+    if ($superAdmin && $superAdmin->email === 'admin@example.com' && Hash::check($password, $superAdmin->password)) {
+        $token = JWTAuth::fromUser($superAdmin);
+
+        return response()->json([
+            'message' => 'Super Admin login successful',
+            'role' => 'super_admin',
+            'token' => $token,
+            'user' => $superAdmin
+        ]);
     }
 
-    // تحقق إنو هذا السوبر أدمن فعلاً (ثابت الإيميل)
-    if ($user->email !== 'admin@example.com') {
-        return response()->json(['message' => 'Not allowed'], 403);
+   // === 2. تحقق من المدير ===
+$manager = Manager::where('email', $email)->first();
+
+if ($manager) {
+    if ($manager->must_change_password) {
+        return response()->json([
+            'message' =>'You haven’t changed your password yet!',
+            'status' => 'must_change_password'
+        ], 403);
     }
 
-    $token = JWTAuth::fromUser($user);
+    if (Hash::check($password, $manager->password)) {
+        $customPayload = ['guard' => 'manager'];
+        $token = JWTAuth::customClaims($customPayload)->fromUser($manager);
+
+        return response()->json([
+            'message' => 'Manager login successful',
+            'role' => 'manager',
+            'token' => $token,
+            'manager' => $manager
+        ]);
+    }
+}
+    // === 3. تحقق من المساعد ===
+$assistant = Assistant::whereHas('user', function ($query) use ($email) {
+    $query->where('email', $email);
+})->with('user')->first();
+
+if ($assistant && Hash::check($password, $assistant->user->password)) {
+    $customPayload = ['guard' => 'assistant'];
+    $token = JWTAuth::customClaims($customPayload)->fromUser($assistant->user);
 
     return response()->json([
-        'message' => 'Login successful',
+        'message' => 'Assistant login successful',
+        'role' => 'assistant',
         'token' => $token,
-        'user' => $user
+        'assistant' => $assistant
     ]);
 }
+
+    return response()->json(['message' => 'Invalid credentials'], 401);
+}
+
 
     public function addManager(Request $request)
     {
@@ -133,7 +175,7 @@ class SuperadminController extends Controller
     }
 }
 
-// Joudy, [6/30/2025 9:46 AM]
+
 // if (!$user) {
 //         return response()->json(['message' => 'User not found'], 404);
 //     }
