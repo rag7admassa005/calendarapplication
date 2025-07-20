@@ -15,6 +15,7 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/verifyCode/{user_id}', [AuthController::class, 'verifyCode']);
 Route::post('/resendCode/{user_id}', [AuthController::class, 'resendVerificationCode']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::get('/managers-list',[AuthController::class,'listManagers']);
 Route::post('/forgotpassword', [AuthController::class, 'forgetPassword']);
 Route::post('/resetcode', [AuthController::class, 'confirmResetCode']);
 Route::middleware('auth:api')->get('/viewProfile', [AuthController::class, 'viewProfile']);
@@ -57,8 +58,10 @@ Route::middleware('auth:api')->post('/appointmentrequest', [UserController::clas
 Route::middleware('auth:api')->post('/appointments/{id}/cancel', [UserController::class, 'cancelAppointment']);
 Route::middleware('auth:api')->post('/appointments/{id}/reschedule', [UserController::class, 'rescheduleAppointment']);
 Route::middleware('auth:api')->get('/my-invitations', [UserController::class, 'myInvitations']);
-Route::middleware('auth:api')->post('/invitations/{id}/accept', [UserController::class, 'acceptInvitation']);
-Route::middleware('auth:api')->post('/invitations/{id}/reject', [UserController::class, 'rejectInvitation']);
+Route::post('/invitations/{id}/respond', [UserController::class, 'respondToInvitation']);
+Route::post('/invitations/{id}/cancel-response', [UserController::class, 'cancelInvitationResponse']);
+Route::middleware('auth:api')->post('/group-appointments/request', [UserController::class, 'requestGroupAppointment']);
+Route::middleware('auth:api')->get('/users', [UserController::class, 'AllUsers']);
 
 // راوتات المدير لإدارة الجدول الزمني
 Route::middleware('manager')->group(function () {
