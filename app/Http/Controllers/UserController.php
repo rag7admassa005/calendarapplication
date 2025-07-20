@@ -12,7 +12,11 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Auth\User;
 
 use App\Mail\AppointmentCancelledMail;
+use App\Mail\InvitationResponsedMail;
+use App\Models\Appointment;
 use App\Models\Invitation;
+use App\Models\Manager;
+use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 { 
@@ -278,4 +282,127 @@ public function cancelAppointment(Request $request, $id)
     return response()->json(['message' => 'Appointment cancelled successfully.'], 200);
 }
 
+public function myInvitations()
+{
+    $user = Auth::guard('api')->user();
+
+    $invitations = Invitation::with('relatedTo') // يجلب الموعد المرتبط إن وُجد
+        ->where('invited_user_id', $user->id)
+        ->orderBy('created_at', 'desc')
+        ->get();
+
+    $result = $invitations->map(function ($invitation) {
+        return [
+            'invitation_id'    => $invitation->id,
+            'status'           => $invitation->status,
+            'sent_at'          => $invitation->sent_at,
+            'responded_at'     => $invitation->responded_at,
+            'appointment_info' => $invitation->relatedTo ? [
+                'id'           => $invitation->relatedTo->id,
+                'date'         => $invitation->relatedTo->date,
+                'start_time'   => $invitation->relatedTo->start_time,
+                'end_time'     => $invitation->relatedTo->end_time,
+                'location'     => $invitation->relatedTo->location ?? null,
+                'description'  => $invitation->relatedTo->description ?? null,
+            ] : null,
+        ];
+    });
+
+    return response()->json([
+        'invitations' => $result
+    ], 200);
+}
+
+
+    public function respondToInvitation(Request $request, $id)
+    {
+        $user = Auth::guard('api')->user();
+
+        $invitation = Invitation::where('id', $id)
+            ->where('invited_user_id', $user->id)
+            ->where('status', 'pending')
+            ->first();
+
+        if (!$invitation) {
+            return response()->json(['message' => 'Invitation not found or already responded to.'], 404);
+        }
+
+        // التأكد من أن الدعوة خاصة بموعد
+        if ($invitation->related_to_type !== 'App\\Models\\Appointment') {
+            return response()->json(['message' => 'Invalid invitation type.'], 400);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'response' => 'required|in:accepted,rejected',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        // الحصول على الموعد المرتبط
+        $appointment = Appointment::find($invitation->related_to_id);
+        if (!$appointment) {
+            return response()->json(['message' => 'Related appointment not found.'], 404);
+        }
+
+        // التحقق من أن الموعد لم يبدأ بعد
+        $appointmentDateTime = Carbon::parse("{$appointment->start_time}");
+        if (now()->gt($appointmentDateTime)) {
+            return response()->json(['message' => 'You cannot respond to an invitation for an appointment that has already started or passed.'], 403);
+        }
+
+        // تحديث حالة الدعوة
+        $invitation->update([
+            'status' => $request->response,
+            'responded_at' => now(),
+        ]);
+
+        // في حالة القبول، إضافة المستخدم للموعد
+        if ($request->response === 'accepted') {
+            // التحقق من عدم وجود المستخدم مسبقاً
+            $existingUser = DB::table('appointment_user')
+                ->where('appointment_id', $appointment->id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if (!$existingUser) {
+                DB::table('appointment_user')->insert([
+                    'appointment_id' => $appointment->id,
+                    'user_id' => $user->id,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            }
+        }
+
+        // إرسال إشعار للمرسل
+        if ($invitation->invited_by_type && $invitation->invited_by_id) {
+            $sender = $invitation->invited_by_type::find($invitation->invited_by_id);
+            if ($sender && $sender->email) {
+                Mail::to($sender->email)->send(new \App\Mail\InvitationResponsedMail($user, $invitation, $appointment));
+            }
+        }
+
+        $responseMessage = $request->response === 'accepted' 
+            ? 'Invitation accepted successfully.' 
+            : 'Invitation rejected successfully.';
+
+        return response()->json(['message' => $responseMessage], 200);
+    }
+    public function AllUsers (Request $request)
+{
+    $user = Auth::guard('api')->user();
+
+    // جلب المستخدمين المرتبطين بنفس المدير (عدا المستخدم الحالي)
+    $colleagues = User::where('manager_id', $user->manager_id)
+        ->where('id', '!=', $user->id)
+        ->select('id', 'first_name', 'last_name', 'email')
+        ->get();
+
+    return response()->json([
+        'success' => true,
+        'data' => $colleagues
+    ]);
+}
 }

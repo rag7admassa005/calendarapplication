@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\VerificationCodeMail;
+use App\Models\Manager;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -127,6 +128,7 @@ class AuthController extends Controller
             'manager_id'=> $request->manager_id,
     ], 200);
 }
+
 public function resendVerificationCode($user_id)
 {
     // 1. العثور على المستخدم
@@ -361,5 +363,13 @@ public function logout(Request $request)
             'error' => $e->getMessage()
         ], 500);
     }
+}
+public function listManagers()
+{
+    $managers = Manager::select('id', 'email')->get();
+
+    return response()->json([
+        'managers' => $managers
+    ], 200);
 }
 }
