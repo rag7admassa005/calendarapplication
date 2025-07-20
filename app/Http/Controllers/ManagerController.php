@@ -100,45 +100,45 @@ class ManagerController extends Controller
     }
 
 
-   public function managerLogin(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'email' => 'required|email',
-        'password' => 'required|string|min:6',
-    ]);
+//    public function managerLogin(Request $request)
+// {
+//     $validator = Validator::make($request->all(), [
+//         'email' => 'required|email',
+//         'password' => 'required|string|min:6',
+//     ]);
 
-    if ($validator->fails()) {
-        return response()->json(['errors' => $validator->errors()], 422);
-    }
+//     if ($validator->fails()) {
+//         return response()->json(['errors' => $validator->errors()], 422);
+//     }
 
-    $manager = Manager::where('email', $request->email)->first();
+//     $manager = Manager::where('email', $request->email)->first();
 
-    if (!$manager) {
-        return response(['message'=>'manager is not found'], 404);
-    }
+//     if (!$manager) {
+//         return response(['message'=>'manager is not found'], 404);
+//     }
 
-     if ($manager->must_change_password) {
-        return response()->json([
-            'message' =>'You havnt change your password yet !',
-            'status' => 'must_change_password'
-        ], 403);
-    }
+//      if ($manager->must_change_password) {
+//         return response()->json([
+//             'message' =>'You havnt change your password yet !',
+//             'status' => 'must_change_password'
+//         ], 403);
+//     }
 
-    if (!Hash::check($request->password, $manager->password)) {
-        return response()->json(['message' => 'password is not tru'], 401);
-    }
+//     if (!Hash::check($request->password, $manager->password)) {
+//         return response()->json(['message' => 'password is not tru'], 401);
+//     }
 
    
 
-    // إصدار توكن JWT
-    $token = JWTAuth::fromUser($manager);
+//     // إصدار توكن JWT
+//     $token = JWTAuth::fromUser($manager);
 
-    return response()->json([
-        'message' => 'logged in successfully',
-        'token' => $token,
-        'manager' => $manager
-    ]);
-}
+//     return response()->json([
+//         'message' => 'logged in successfully',
+//         'token' => $token,
+//         'manager' => $manager
+//     ]);
+// }
 
 
 }
