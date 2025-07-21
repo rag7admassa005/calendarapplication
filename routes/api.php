@@ -62,7 +62,7 @@ Route::post('/invitations/{id}/respond', [UserController::class, 'respondToInvit
 Route::post('/invitations/{id}/cancel-response', [UserController::class, 'cancelInvitationResponse']);
 Route::middleware('auth:api')->post('/group-appointments/request', [UserController::class, 'requestGroupAppointment']);
 Route::middleware('auth:api')->get('/users', [UserController::class, 'AllUsers']);
-
+Route::middleware('auth:api')->get('/my-appointments', [UserController::class, 'AllAppointments']);
 // راوتات المدير لإدارة الجدول الزمني
 Route::middleware('manager')->group(function () {
 Route::post('/add/schedule', [ScheduleController::class, 'addSchedule']);

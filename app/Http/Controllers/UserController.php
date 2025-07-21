@@ -405,4 +405,120 @@ public function myInvitations()
         'data' => $colleagues
     ]);
 }
+
+public function requestGroupAppointment(Request $request)
+{
+    $user = Auth::guard('api')->user();
+
+    $validator = Validator::make($request->all(), [
+        'preferred_date' => 'required|date|after_or_equal:today',
+        'preferred_start_time' => 'required|date_format:H:i',
+        'preferred_end_time' => 'required|date_format:H:i|after:preferred_start_time',
+        'preferred_duration' => 'required|integer|in:30,60',
+        'reason' => 'nullable|string|max:1000',
+        'invited_users' => 'required|array|min:1',
+        'invited_users.*' => 'required|exists:users,id|different:' . $user->id,
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    $manager_id = $user->manager_id;
+    $date = $request->preferred_date;
+    $start_time = $request->preferred_start_time;
+    $end_time = $request->preferred_end_time;
+    $duration = $request->preferred_duration;
+    $day = strtolower(Carbon::parse($date)->format('l'));
+
+    // 1. التحقق من أن الوقت ضمن الجدول المتاح
+    $schedule = Schedule::where('manager_id', $manager_id)
+        ->where('day_of_week', $day)
+        ->where('is_available', true)
+        ->where('start_time', '<=', $start_time)
+        ->where('end_time', '>=', $end_time)
+        ->first();
+
+    if (!$schedule) {
+        return response()->json(['message' => 'المدير غير متاح في الوقت المطلوب.'], 400);
+    }
+
+    // 2. التحقق من التعارض مع مواعيد مقبولة
+    $conflict = AppointmentRequest::where('manager_id', $manager_id)
+        ->where('preferred_date', $date)
+        ->where('status', 'accepted')
+        ->where(function ($query) use ($start_time, $end_time) {
+            $query->whereBetween('preferred_start_time', [$start_time, $end_time])
+                ->orWhereBetween('preferred_end_time', [$start_time, $end_time])
+                ->orWhere(function ($q) use ($start_time, $end_time) {
+                    $q->where('preferred_start_time', '<', $start_time)
+                      ->where('preferred_end_time', '>', $end_time);
+                });
+        })
+        ->exists();
+
+    if ($conflict) {
+        return response()->json(['message' => 'يوجد تعارض مع موعد آخر مقبول.'], 409);
+    }
+
+    try {
+        DB::beginTransaction();
+
+        // 3. إنشاء الطلب
+        $appointmentRequest = AppointmentRequest::create([
+            'user_id' => $user->id,
+            'manager_id' => $manager_id,
+            'preferred_date' => $date,
+            'preferred_start_time' => $start_time,
+            'preferred_end_time' => $end_time,
+            'preferred_duration' => $duration,
+            'reason' => $request->reason,
+            'status' => 'pending',
+            'requested_at' => now(),
+        ]);
+
+        // 4. حفظ المدعوين بصيغة JSON (يمكن لاحقًا تحويلها إلى جدول Pivot)
+        $appointmentRequest->update([
+            'invited_users_data' => json_encode($request->invited_users)
+        ]);
+
+        // 5. إرسال إشعار للمدير
+        $manager = Manager::find($manager_id);
+        if ($manager && $manager->email) {
+            Mail::to($manager->email)->send(
+                new \App\Mail\GroupAppointmentRequestedMail($appointmentRequest, $user)
+            );
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'message' => 'تم إرسال طلب الموعد الجماعي بنجاح.',
+            'appointment' => $appointmentRequest
+        ], 201);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'حدث خطأ أثناء إرسال الطلب',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+public function AllAppointments()
+{
+    $user = Auth::guard('api')->user();
+
+    $appointments = AppointmentRequest::where('user_id', $user->id)
+        ->select('preferred_date', 'preferred_start_time', 'preferred_end_time', 'status', 'reason')
+        ->orderBy('preferred_date', 'desc')
+        ->get();
+
+    return response()->json([
+        'appointments' => $appointments
+    ]);
+}
+
+
 }
