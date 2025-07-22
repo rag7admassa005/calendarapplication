@@ -12,7 +12,7 @@ class AppointmentRequest extends Model
   protected $fillable = [
     'user_id', 'manager_id', 'preferred_date', 'preferred_start_time',
     'preferred_end_time', 'preferred_duration', 'reason', 'status', 'requested_at',
-    'reviewed_by_type', 'reviewed_by_id',  // <- أضفهم هنا
+    'reviewed_by_type', 'reviewed_by_id',  
 ];
 
     public function user(): BelongsTo
