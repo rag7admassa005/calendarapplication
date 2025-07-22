@@ -101,7 +101,7 @@ public function requestAppointment(Request $request)
         return response()->json(['message' => 'The manager is not available at this time.'], 400);
     }
 
-    $duration = $schedule->meeting_duration_1 ?? 30;
+    $duration = $schedule->meeting_duration_1 ;
     $end_time = Carbon::createFromFormat('H:i', $start_time)->addMinutes($duration)->format('H:i');
 
     // التحقق من تعارض مع مواعيد مقبولة فقط
@@ -145,7 +145,19 @@ public function requestAppointment(Request $request)
 
     return response()->json([
         'message'     => 'Appointment request submitted successfully. Status is pending.',
-        'appointment' => $appointment,
+        'appointment' => [ 
+         'id'=>$appointment->id,
+        'user_id'=> $user->id,
+        'manager_id'           => $manager_id,
+        'preferred_date'       => $date,
+        'preferred_start_time' => $start_time,
+        'end_time'   => $end_time,
+        'duration'   => $duration,
+        'reason'               => $request->reason,
+        'status'               => 'pending',
+        'requested_at'         => now(),
+
+        ],
     ], 201);
 }
 
@@ -153,9 +165,13 @@ public function requestAppointment(Request $request)
 {
     $user = Auth::guard('api')->user();
 
+    if(!$user)
+    {
+        return response()->json(['message' => 'user is not found '], 404);
+    }
     $appointment = AppointmentRequest::where('id', $id)
         ->where('user_id', $user->id)
-       ->whereNotIn('status', ['pending'])
+       ->where('status', ['pending'])
         ->first();
 
     if (!$appointment) {
@@ -239,6 +255,10 @@ public function requestAppointment(Request $request)
 public function cancelAppointment(Request $request, $id)
 {
     $user = Auth::guard('api')->user();
+    if(!$user)
+    {
+        return response()->json(['message' => 'user is not found '], 404);
+    }
 
     $validator = Validator::make($request->all(), [
         'reason' => 'required|string|max:1000',

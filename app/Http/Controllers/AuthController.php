@@ -366,10 +366,25 @@ public function logout(Request $request)
 }
 public function listManagers()
 {
-    $managers = Manager::select('id', 'email')->get();
+    $managers = Manager::select('id', 'email', 'name', 'image', 'department', 'must_change_password', 'verification_code', 'code_expires_at')
+        ->get()
+        ->map(function ($manager) {
+            return [
+                'id'                  => $manager->id,
+                'email'               => $manager->email,
+                'name'                => $manager->name,
+                'image'               => $manager->image ? url("storage/" . $manager->image) : null,
+                'department'          => $manager->department,
+                'must_change_password'=> $manager->must_change_password,
+                'verification_code'   => $manager->verification_code,
+                'code_expires_at'     => $manager->code_expires_at,
+            ];
+        });
 
     return response()->json([
-        'managers' => $managers
-    ], 200);
+        'message' => 'Managers list retrieved successfully.',
+        'managers' => $managers,
+    ]);
 }
+
 }

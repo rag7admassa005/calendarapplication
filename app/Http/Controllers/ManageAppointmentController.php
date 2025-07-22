@@ -9,6 +9,7 @@ use App\Models\AppointmentNote;
 use App\Models\Invitation;
 use App\Models\Job;
 use App\Models\Manager;
+use App\Models\Schedule ;
 use App\Models\User;
 use App\Notifications\AppointmentApprovedNotification;
 use App\Notifications\AppointmentInvitation;
@@ -53,8 +54,8 @@ class ManageAppointmentController extends Controller
             'id' => $request->id,
             'preferred_date' => $request->preferred_date,
             'preferred_start_time' => $request->preferred_start_time,
-            'preferred_end_time' => $request->preferred_end_time,
-            'preferred_duration' => $request->preferred_duration,
+            'end_time' => $request->preferred_end_time,
+            'duration' => $request->preferred_duration,
             'status' => $request->status,
             'reason' => $request->reason,
             'requested_at' => $request->requested_at,
@@ -378,12 +379,8 @@ public function inviteUserToAppointment(Request $request)
     $validator = Validator::make($request->all(), [
         'user_id' => 'required|exists:users,id',
         'appointment_id' => 'nullable|exists:appointments,id',
-
-        // إذا ما في appointment_id لازم نبعت تفاصيل الموعد
         'date' => 'required_without:appointment_id|date',
         'start_time' => 'required_without:appointment_id|date_format:H:i',
-        'end_time' => 'required_without:appointment_id|date_format:H:i|after:start_time',
-        'duration' => 'required_without:appointment_id|integer|in:30,60',
     ]);
 
     if ($validator->fails()) {
@@ -406,7 +403,7 @@ public function inviteUserToAppointment(Request $request)
         $appointment = Appointment::find($request->appointment_id);
 
         if ($appointment->manager_id !== $manager->id) {
-            return response()->json(['message' => 'Unauthorized – not your appointment'], 403);
+            return response()->json(['message' => 'Unauthorized - not your appointment'], 403);
         }
 
         $alreadyInvited = Invitation::where('related_to_type', get_class($appointment))
@@ -418,12 +415,40 @@ public function inviteUserToAppointment(Request $request)
             return response()->json(['message' => 'User already invited to this appointment'], 409);
         }
     } else {
-        // ==== الحالة 2: تحقق من وجود موعد مطابق قبل إنشاء جديد ====
+        // ==== الحالة 2: إنشاء موعد جديد ====
+
+        $date = $request->date;
+        $start_time = $request->start_time;
+        $day = strtolower(Carbon::parse($date)->format('l'));
+
+        // جلب جدول المواعيد للمدير
+        $schedule = Schedule::where('manager_id', $manager->id)
+            ->where('day_of_week', $day)
+            ->where('is_available', true)
+            ->where('start_time', '<=', $start_time)
+            ->where('end_time', '>', $start_time)
+            ->first();
+
+        if (!$schedule) {
+            return response()->json(['message' => 'The manager is not available at this time.'], 400);
+        }
+
+        // حساب وقت الانتهاء حسب المدة من الجدولة
+        $duration = $schedule->meeting_duration_1;
+        $end_time_obj = Carbon::createFromFormat('H:i', $start_time)->addMinutes($duration);
+        $end_time = $end_time_obj->format('H:i');
+
+        // تحقق أن نهاية الموعد لا تتجاوز نهاية الجدول
+        if ($end_time > $schedule->end_time) {
+            return response()->json(['message' => 'Appointment exceeds available schedule.'], 400);
+        }
+
+        // تحقق من وجود موعد مطابق مسبقاً
         $existingAppointment = Appointment::where('manager_id', $manager->id)
-            ->where('date', $request->date)
-            ->where('start_time', $request->start_time)
-            ->where('end_time', $request->end_time)
-            ->where('duration', $request->duration)
+            ->where('date', $date)
+            ->where('start_time', $start_time)
+            ->where('end_time', $end_time)
+            ->where('duration', $duration)
             ->first();
 
         if ($existingAppointment) {
@@ -438,20 +463,20 @@ public function inviteUserToAppointment(Request $request)
 
             $appointment = $existingAppointment;
         } else {
-            // أنشئ موعد جديد
+            // إنشاء الموعد الجديد
             $appointment = Appointment::create([
                 'manager_id' => $manager->id,
                 'assistant_id' => null,
-                'date' => $request->date,
-                'start_time' => $request->start_time,
-                'end_time' => $request->end_time,
-                'duration' => $request->duration,
+                'date' => $date,
+                'start_time' => $start_time,
+                'end_time' => $end_time,
+                'duration' => $duration,
                 'status' => 'pending',
             ]);
         }
     }
 
-    // أنشئ الدعوة
+    // إنشاء الدعوة
     $invitation = Invitation::create([
         'related_to_type' => get_class($appointment),
         'related_to_id' => $appointment->id,
@@ -471,7 +496,6 @@ public function inviteUserToAppointment(Request $request)
         'invitation' => $invitation,
     ]);
 }
-
 
 
     public function getSentInvitations(Request $request)

@@ -95,7 +95,8 @@ class ManagerController extends Controller
         Mail::to($manager->email)->send(new ManagerInvitationMail($manager));
 
         return response([
-            "message" => "Verification code resent successfully."
+            "message" => "Verification code resent successfully.",
+            "manager"=> $manager
         ], 200);
     }
 
