@@ -81,7 +81,7 @@ class ManagerController extends Controller
         if ($manager->email_verified_at) {
             return response([
                 "message" => "Email is already verified."
-            ], 200);
+            ], 400);
         }
 
         $code = rand(100000, 999999);
