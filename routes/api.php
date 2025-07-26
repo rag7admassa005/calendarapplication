@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AssistantController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\JobController;
 use App\Http\Controllers\ManageAppointmentController;
@@ -81,3 +82,5 @@ Route::get('/manager/invitations', [ManageAppointmentController::class, 'getSent
 Route::post('/manager/appointment-notes', [ManageAppointmentController::class, 'addNote']);
 Route::get('/manager/appointment-notes/{appointmentId}', [ManageAppointmentController::class, 'getNotes']);
 });
+Route::post('/assign-assistant', [AssistantController::class, 'assignAssistant']);
+Route::post('/assistants/{assistantId}/assign-permissions', [AssistantController::class, 'insertAssistantPermissions']);
