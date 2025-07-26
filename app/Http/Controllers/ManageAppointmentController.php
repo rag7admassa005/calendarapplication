@@ -6,9 +6,11 @@ use App\Models\AppointmentRequest;
 
 use App\Models\Appointment;
 use App\Models\AppointmentNote;
+use App\Models\AssistantActivity;
 use App\Models\Invitation;
 use App\Models\Job;
 use App\Models\Manager;
+use App\Models\Permission;
 use App\Models\Schedule ;
 use App\Models\User;
 use App\Notifications\AppointmentApprovedNotification;
@@ -97,24 +99,43 @@ class ManageAppointmentController extends Controller
  public function approveAppointmentRequest($id)
 {
     $manager = Auth::guard('manager')->user();
-    if(!$manager)
-    {
-        return response(['message'=>'manager is not found']);
+    $assistant = Auth::guard('assistant')->user();
+
+    // تحديد الجهة المنفذة
+    if (!$manager && !$assistant) {
+        return response(['message' => 'Unauthorized'], 401);
     }
+
     $request = AppointmentRequest::findOrFail($id);
 
-    // تحقق من ملكية المدير للطلب
-    if ($request->manager_id !== $manager->id) {
-        return response()->json(['message' => 'Unauthorized'], 403);
+    // جلب المدير المسؤول عن الطلب
+    $ownerManager = Manager::find($request->manager_id);
+    if (!$ownerManager) {
+        return response()->json(['message' => 'Manager not found'], 404);
     }
 
+    // التحقق من صلاحية المساعد إن وجد
+    if ($assistant) {
+        // التحقق أن هذا المساعد يتبع للمدير صاحب الطلب
+        if ($assistant->manager_id !== $ownerManager->id) {
+            return response()->json(['message' => 'Unauthorized assistant'], 403);
+        }
+
+        // التحقق من صلاحية تنفيذ الإجراء
+        $permission = Permission::where('name', 'accept_appointment')->first();
+        if (!$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+    }
+
+    // المدير أو المساعد يستطيع تنفيذ التابع الآن
     // لا تسمح بقبول الطلب أكثر من مرة
     if ($request->status === 'approved') {
         return response()->json(['message' => 'This appointment request has already been approved.'], 400);
     }
 
-    // تحقق من التداخل الزمني مع مواعيد المدير الموجودة
-    $overlapping = Appointment::where('manager_id', $manager->id)
+    // التحقق من التداخل الزمني
+    $overlapping = Appointment::where('manager_id', $ownerManager->id)
         ->where('date', $request->preferred_date)
         ->where(function ($query) use ($request) {
             $query->whereBetween('start_time', [$request->preferred_start_time, $request->preferred_end_time])
@@ -127,25 +148,22 @@ class ManageAppointmentController extends Controller
         ->exists();
 
     if ($overlapping) {
-        return response()->json([
-            'message' => 'The requested appointment time overlaps with an existing appointment.'
-        ], 409);
+        return response()->json(['message' => 'The requested appointment time overlaps with an existing appointment.'], 409);
     }
 
-    // إنشاء الموعد الجديد
+    // إنشاء الموعد
     $appointment = Appointment::create([
         'date' => $request->preferred_date,
         'start_time' => $request->preferred_start_time,
         'end_time' => $request->preferred_end_time,
         'duration' => $request->preferred_duration,
         'status' => 'approved',
-        'manager_id' => $manager->id,
+        'manager_id' => $ownerManager->id,
     ]);
 
-    // ربط المستخدم الأساسي (مقدم الطلب)
+    // ربط صاحب الطلب والمستخدمين المقبولين
     $appointment->users()->syncWithoutDetaching([$request->user_id]);
 
-    // جلب المستخدمين المدعوين الذين قبلوا الدعوة
     $acceptedUsers = Invitation::where('related_to_type', get_class($request))
         ->where('related_to_id', $request->id)
         ->where('status', 'accepted')
@@ -156,23 +174,35 @@ class ManageAppointmentController extends Controller
         $appointment->users()->syncWithoutDetaching($acceptedUsers);
     }
 
-    // تحديث حالة الطلب إلى approved وربط المراجِع
+    // تحديث حالة الطلب وربط المراجع
+    $reviewedBy = $manager ?: $assistant;
     $request->update([
         'status' => 'approved',
-        'reviewed_by_type' => get_class($manager),
-        'reviewed_by_id' => $manager->id,
+        'reviewed_by_type' => get_class($reviewedBy),
+        'reviewed_by_id' => $reviewedBy->id,
     ]);
 
-    // تحميل بيانات إضافية للإرجاع
-    $request->load('user'); // صاحب الطلب
+      // تحميل بيانات إضافية
+    $request->load('user');
     $invitedUsers = \App\Models\User::whereIn('id', $acceptedUsers)->get();
 
-    // إشعار مقدم الطلب
+
+    // إشعارات
     $request->user->notify(new AppointmentApprovedNotification($appointment));
 
-    // إشعار المستخدمين المدعوين المقبولين
+ // إشعار المستخدمين المدعوين
     foreach ($invitedUsers as $user) {
-        $user->notify(new AppointmentApprovedNotification($appointment));
+        $user->notify(new AppointmentRescheduled($appointment));
+    }
+
+    // 📝 تسجيل تتبع النشاط للمساعد فقط
+    if ($assistant) {
+        AssistantActivity::create([
+            'assistant_id' => $assistant->id,
+            'permission_id' => $permission->id,
+            'appointment_id' => $appointment->id,
+            'executed_at' => now(),
+        ]);
     }
 
     return response()->json([
@@ -181,8 +211,8 @@ class ManageAppointmentController extends Controller
         'appointment_request' => [
             'id' => $request->id,
             'status' => $request->status,
-            'created_by' => $request->user, // بيانات من أنشأ الطلب
-            'accepted_invited_users' => $invitedUsers // المستخدمين يلي رح يحضروا
+            'created_by' => $request->user,
+            'accepted_invited_users' => $invitedUsers
         ]
     ]);
 }

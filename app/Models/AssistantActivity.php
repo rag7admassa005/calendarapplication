@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AssistantActivity extends Model
 {
+    protected $table='assistant_activity';
     protected $fillable = ['assistant_id', 'permission_id', 'appointment_id', 'executed_at'];
 
     public function assistant(): BelongsTo

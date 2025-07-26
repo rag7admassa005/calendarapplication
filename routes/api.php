@@ -70,7 +70,7 @@ Route::post('/update/schedule/{id}', [ScheduleController::class, 'updateSchedule
 Route::get('/show/manager/schedule', [ScheduleController::class, 'viewManagerSchedule']);
 });
 
-Route::middleware('manager')->group(function () {
+// Route::middleware(['manager_or_assistant'])->group(function () {
 Route::get('show/requests', [ManageAppointmentController::class, 'showAppointmentRequests']);
 Route::post('appointments/approve/{request_id}', [ManageAppointmentController::class, 'approveAppointmentRequest']);
 Route::post('appointments/reschedule/{id}', [ManageAppointmentController::class, 'rescheduleAppointmentRequest']);
@@ -80,4 +80,4 @@ Route::post('/manager/appointments/invite-existing', [ManageAppointmentControlle
 Route::get('/manager/invitations', [ManageAppointmentController::class, 'getSentInvitations']);
 Route::post('/manager/appointment-notes', [ManageAppointmentController::class, 'addNote']);
 Route::get('/manager/appointment-notes/{appointmentId}', [ManageAppointmentController::class, 'getNotes']);
-});
+// });
