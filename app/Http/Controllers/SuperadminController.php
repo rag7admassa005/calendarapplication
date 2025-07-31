@@ -75,7 +75,7 @@ public function adminLogin(Request $request)
 
     if ($assistant && Hash::check($password, $assistant->user->password)) {
         $customPayload = ['guard' => 'assistant'];
-        $token = JWTAuth::customClaims($customPayload)->fromUser($assistant->user);
+        $token = JWTAuth::customClaims($customPayload)->fromUser($assistant);
         $assistant->user->role = 'assistant';
         $assistant->user->token = $token;
 

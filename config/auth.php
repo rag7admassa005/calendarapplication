@@ -18,7 +18,7 @@ return [
         'provider' =>'managers',
     ],
     'assistant' => [
-        'driver' => 'session',
+        'driver' => 'jwt',
         'provider' => 'assistants',
     ],
 ],
