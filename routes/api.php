@@ -26,6 +26,7 @@ Route::middleware('auth:api')->delete('/logout', [AuthController::class, 'logout
 
 Route::post('/superadmin/login', [SuperadminController::class, 'adminLogin']);
 Route::middleware('superadmin')->group(function () {
+    Route::get('/managers/sections',[SuperadminController::class,'listSectionsManager']);
     Route::post('/managers', [SuperadminController::class, 'addManager']);
     Route::post('/managers/{id}', [SuperadminController::class, 'deleteManager']);
     Route::get('/managers', [SuperadminController::class, 'showAllManagers']);
@@ -36,19 +37,23 @@ Route::middleware('superadmin')->group(function () {
 
 Route::post('/manager/set-password', [ManagerController::class, 'setManagerPassword']);
 Route::post('/manager/verify-code', [ManagerController::class, 'resendVerificationCode']);
+Route::get('/manager/set-users', [ManagerController::class, 'getAvailableUsers']);
+Route::post('/manager/assignuser', [ManagerController::class, 'assignUserToManager']);
+
 
 // -------------------- Job Routes --------------------
 
-// عامة: يمكن للمستخدم رؤية وظائف مدير معين
-Route::get('/managers/{manager_id}/jobs', [JobController::class, 'showJobsByManager']);
+// عامة: يمكن للمستخدم رؤية الاقسام وكل قسم ووظيفته
+Route::get('/sections', [JobController::class, 'listSections']);
+Route::get('/jobs/{id}',[JobController::class,'getJobsBySection']);
 
 // محمية: للمدير فقط
-Route::middleware('manager')->group(function () {
-    Route::post('/manager/jobs', [JobController::class, 'addJob']);
-    Route::post('/emanager/jobs/{job_id}', [JobController::class, 'editJob']);
-    Route::post('/dmanager/jobs/{job_id}', [JobController::class, 'deletJob']);
-    Route::get('/show/manager/jobs', [JobController::class, 'myJobs']);
-});
+// Route::middleware('manager')->group(function () {
+//     Route::post('/manager/jobs', [JobController::class, 'addJob']);
+//     Route::post('/emanager/jobs/{job_id}', [JobController::class, 'editJob']);
+//     Route::post('/dmanager/jobs/{job_id}', [JobController::class, 'deletJob']);
+//     Route::get('/show/manager/jobs', [JobController::class, 'myJobs']);
+// });
 
 // -------------------- Schedule & Appointment Routes --------------------
 

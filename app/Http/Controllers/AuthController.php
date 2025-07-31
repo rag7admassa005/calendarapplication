@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Mail\VerificationCodeMail;
+use App\Models\Job;
 use App\Models\Manager;
+use App\Models\Section;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -27,8 +29,8 @@ class AuthController extends Controller
             'phone_number'      => 'nullable|string|unique:users',
             'address'           => 'nullable|string',
             'date_of_birth'     => 'nullable|date',
+            'section_id'            => 'required|exists:sections,id',
             'job_id'            => 'required|exists:jobs,id',
-            'manager_id'        => 'required|exists:managers,id',// تحثث ان المستخدم الذي تم اختياره هو فعلا مدير
              'image'=>'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
         ]);
 
@@ -39,6 +41,13 @@ class AuthController extends Controller
            if ($request->hasFile('image')) {
                $profileImage = $request->file('image')->store('profile_images', 'public');
 }
+$job = Job::find($request->job_id);
+if (!$job || $job->section_id != $request->section_id) {
+    return response()->json([
+        'message' => 'The selected job does not belong to the selected section.'
+    ], 422);
+}
+
          $verificationCode = rand(100000, 999999);
               $user = User::create([
             'first_name'        => $request->first_name,
@@ -51,7 +60,7 @@ class AuthController extends Controller
             'address'           => $request->address,
             'date_of_birth'     => $request->date_of_birth,
             'job_id'            => $request->job_id,
-            'manager_id'        => $request->manager_id,
+            'section_id'        =>$request->section_id,
             'image'             => $profileImage,
         ]); 
         
@@ -125,7 +134,7 @@ class AuthController extends Controller
             "email_verified_at" => $user->email_verified_at,
             "image" => $user->image ? url("storage/".$user->image) : null,
             "job_id"=>$user->job,
-            'manager_id'=> $request->manager_id,
+            'section_id'=>$user->section_id,
     ], 200);
 }
 
@@ -204,8 +213,8 @@ public function login(Request $request)
         "date_of_birth" => $user->date_of_birth,
         "email_verified_at" => $user->email_verified_at,
         "image" => $user->image ? url("storage/" . $user->image) : null,
+         'section_id'=>$user->section_id,
         "job_id" => $user->job_id,
-        "manager_id" => $user->manager_id,
     ], 200);
 }
 public function viewProfile(Request $request)
@@ -222,8 +231,8 @@ public function viewProfile(Request $request)
         'date_of_birth' => $user->date_of_birth,
         'email_verified_at' => $user->email_verified_at,
         'image' => $user->image ? url('storage/' . $user->image) : null,
+         'section_id'=>$user->section_id,
         'job_id' => $user->job_id,
-        'manager_id' => $user->manager_id,
     ]);
 }
 public function updateProfile(Request $request)
@@ -241,7 +250,6 @@ public function updateProfile(Request $request)
         'address'       => 'nullable|string',
         'date_of_birth' => 'nullable|date',
         'job_id'        => 'nullable|exists:jobs,id',
-        'manager_id'    => 'nullable|exists:managers,id',
         'image'         => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
     ]);
 
@@ -251,7 +259,7 @@ public function updateProfile(Request $request)
 
     $updateData = [];
 
-    foreach (['first_name', 'last_name', 'phone_number', 'address', 'date_of_birth', 'job_id', 'manager_id'] as $field) {
+    foreach (['first_name', 'last_name', 'phone_number', 'address', 'date_of_birth', 'job_id'] as $field) {
         if ($request->has($field)) {
             $updateData[$field] = $request->$field;
         }
@@ -275,8 +283,9 @@ public function updateProfile(Request $request)
             'date_of_birth' => $user->date_of_birth,
             'email_verified_at' => $user->email_verified_at,
             'image' => $user->image ? url('storage/' . $user->image) : null,
+             'section_id'=>$user->section_id,
             'job_id' => $user->job_id,
-            'manager_id' => $user->manager_id,
+            
         ]
     ], 200);
 }
@@ -364,27 +373,7 @@ public function logout(Request $request)
         ], 500);
     }
 }
-public function listManagers()
-{
-    $managers = Manager::select('id', 'email', 'name', 'image', 'department', 'must_change_password', 'verification_code', 'code_expires_at')
-        ->get()
-        ->map(function ($manager) {
-            return [
-                'id'                  => $manager->id,
-                'email'               => $manager->email,
-                'name'                => $manager->name,
-                'image'               => $manager->image ? url("storage/" . $manager->image) : null,
-                'department'          => $manager->department,
-                'must_change_password'=> $manager->must_change_password,
-                'verification_code'   => $manager->verification_code,
-                'code_expires_at'     => $manager->code_expires_at,
-            ];
-        });
 
-    return response()->json([
-        'message' => 'Managers list retrieved successfully.',
-        'managers' => $managers,
-    ]);
-}
+
 
 }

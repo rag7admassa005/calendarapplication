@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\ManagerInvitationMail;
 use App\Models\Assistant;
 use App\Models\Manager;
+use App\Models\Section;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -88,17 +89,35 @@ public function adminLogin(Request $request)
     return response()->json(['message' => 'Invalid credentials'], 401);
 }
 
+ public function listSectionsManager()
+{
+    $sections = Section::select('id', 'name')
+        ->where('id', '!=', 1) // تجاهل القسم الأول
+        ->get()
+        ->map(function ($section) {
+            return [
+                'id'   => $section->id,
+                'name' => $section->name,
+            ];
+        });
+
+    return response()->json([
+        'message'  => 'Section list retrieved successfully.',
+        'sections' => $sections,
+    ]);
+}
     public function addManager(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'email'             => 'required|string|email|max:255|unique:managers',
-            'department'        => 'required|string',
+            'section_id'            => 'required|exists:sections,id',
             'name'              =>'required|string',
             'image'=>'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
 
         ]);
         if ($validator->fails()) {
-            return response(['errors' => $validator->errors(), 422]);
+            return response()->json(['errors' => $validator->errors()], 422);
+
         }
 
           $profileImage = null;
@@ -112,7 +131,7 @@ public function adminLogin(Request $request)
             'email'             => $request->email,
             'name'              =>$request->name,
             'image'             =>$profileImage,
-            'department'       => $request->department,
+            'section_id'       => $request->section_id,
             'must_change_password' => true,
             'verification_code' => $verificationCode,
             'code_expires_at' => $expiresAt,
@@ -129,11 +148,14 @@ public function adminLogin(Request $request)
         'email'             => $manager->email,
         'name'              => $manager->name,
         'image'             => $manager->image ? url("storage/" . $manager->image) : null,
-        'department'        => $manager->department,
+        'section' => [
+    'id' => $manager->section_id,
+    'name' => optional($manager->section)->name, // assuming العلاقة معرفة
+],
         'must_change_password' => $manager->must_change_password,
         'verification_code' => $manager->verification_code,
         'code_expires_at'   => $manager->code_expires_at,
-        'password'          => $manager->password, // تأكد إنك ما تبعتها فعلاً بالإنتاج
+       
     ]
 ]);
     }
@@ -167,7 +189,10 @@ public function adminLogin(Request $request)
                 "image" => $manager->image ? url("storage/".$manager->image) : null,
                 'email' => $manager->email,
                 'email_verified_at' => $manager->email_verified_at,
-                'department' => $manager->department,
+                'section' => [
+    'id' => $manager->section_id,
+    'name' => optional($manager->section)->name, // assuming العلاقة معرفة
+],
             ];
         });
 
@@ -192,7 +217,10 @@ public function adminLogin(Request $request)
              'name'=>$manager->name,
              "image" => $manager->image ? url("storage/".$manager->image) : null,
             'email_verified_at' => $manager->email_verified_at,
-            'department' => $manager->department,
+            'section' => [
+    'id' => $manager->section_id,
+    'name' => optional($manager->section)->name, // assuming العلاقة معرفة
+],
         ]);
     }
 }

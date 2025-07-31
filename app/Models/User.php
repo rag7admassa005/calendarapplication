@@ -29,12 +29,18 @@ class User extends Authenticatable implements JWTSubject
         'address',
         'date_of_birth',
         'manager_id',
+        'section_id',
         'job_id'
     ];
 
     public function manager(): BelongsTo
     {
         return $this->belongsTo(Manager::class);
+    }
+
+      public function section()
+    {
+        return $this->belongsTo(Section::class);
     }
 
     public function job(): BelongsTo

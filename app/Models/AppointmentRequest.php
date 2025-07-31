@@ -33,5 +33,10 @@ class AppointmentRequest extends Model
 {
     return $this->morphMany(Invitation::class, 'related_to');
 }
+public function appointmentRequest()
+{
+    return $this->belongsTo(AppointmentRequest::class, 'appointment_request_id');
+}
+
 
 }

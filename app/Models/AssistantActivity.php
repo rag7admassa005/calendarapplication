@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class AssistantActivity extends Model
 {
     protected $table='assistant_activity';
-    protected $fillable = ['assistant_id', 'permission_id', 'appointment_id', 'executed_at'];
+    protected $fillable = ['assistant_id', 'permission_id', 'appointment_request_id', 'executed_at'];
 
     public function assistant(): BelongsTo
     {
@@ -20,8 +20,9 @@ class AssistantActivity extends Model
         return $this->belongsTo(Permission::class);
     }
 
-    public function appointment(): BelongsTo
-    {
-        return $this->belongsTo(Appointment::class);
-    }
+   public function appointmentRequest()
+{
+    return $this->belongsTo(AppointmentRequest::class, 'appointment_request_id');
+}
+
 }
