@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Job extends Model
 {
-    protected $fillable = ['manager_id', 'title', 'description'];
+    protected $fillable = ['section_id', 'title', 'description'];
 
-    public function manager(): BelongsTo
+      public function section()
     {
-        return $this->belongsTo(Manager::class);
+        return $this->belongsTo(Section::class);
     }
 
     public function users(): HasMany

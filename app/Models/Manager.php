@@ -22,11 +22,12 @@ class Manager extends  Authenticatable implements JWTSubject
     {
         return [];
     }
-    protected $fillable = ['email', 'password', 'department','email_verified_at','verification_code','code_expires_at','must_change_password','name','image'];
+    protected $fillable = ['email', 'password','email_verified_at','verification_code','code_expires_at','must_change_password','name','image','section_id'];
 
-    public function jobs(): HasMany
+   
+  public function section()
     {
-        return $this->hasMany(Job::class);
+        return $this->belongsTo(Section::class);
     }
 
     public function users(): HasMany

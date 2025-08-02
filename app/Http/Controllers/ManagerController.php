@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Mail\ManagerInvitationMail;
 use App\Models\Job;
 use App\Models\Manager;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
@@ -99,6 +101,67 @@ class ManagerController extends Controller
             "manager"=> $manager
         ], 200);
     }
+
+    public function getAvailableUsers()
+{
+   
+    $manager = Auth::guard('manager')->user();
+ if(!$manager)
+    {
+       return response([
+                "message" => "Manager is not found"
+            ], 400);
+        }
+    $users = User::where('section_id', $manager->section_id)
+        ->whereNull('manager_id') // لم يُربطوا بعد
+        ->select('id', 'first_name', 'last_name', 'email')
+        ->get()
+        ->map(function ($user) use ($manager) {
+            return [
+                'id'         => $user->id,
+                'first_name' => $user->first_name,
+                'last_name'  => $user->last_name,
+                'email'      => $user->email,
+               
+            ];
+        });
+
+    return response()->json([
+        'message' => 'Users retrieved successfully.',
+        'users'   => $users,
+    ]);
+}
+
+public function assignUserToManager(Request $request)
+{
+    $manager = Auth::guard('manager')->user();
+
+     if (!$manager) {
+        return response()->json([
+            "message" => "Manager is not found"
+        ], 400);
+    }
+    $validator = Validator::make($request->all(), [
+        'user_id' => 'required|exists:users,id',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    $user = User::where('id', $request->user_id)
+        ->where('section_id', $manager->section_id)
+        ->whereNull('manager_id')
+        ->first();
+
+    if (!$user) {
+        return response()->json(['message' => 'User not found or does not belong to your section or already assigned.'], 404);
+    }
+
+    $user->update(['manager_id' => $manager->id]);
+
+    return response()->json(['message' => 'User assigned successfully.']);
+}
 
 
 //    public function managerLogin(Request $request)

@@ -18,12 +18,9 @@ class DatabaseSeeder extends Seeder
         SuperadminSeeder::class,
 
         PermissionsSeeder::class,
+        SectionAndJobSeeder::class,
     ]);
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-             'email_verified_at' => now(),
-        ]);
+      
     }
 }
