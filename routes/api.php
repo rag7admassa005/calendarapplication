@@ -8,6 +8,7 @@ use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SuperadminController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AssistantController;
 
 // -------------------- Auth Routes --------------------
 
@@ -86,3 +87,17 @@ Route::get('/manager/invitations', [ManageAppointmentController::class, 'getSent
 Route::post('/manager/appointment-notes', [ManageAppointmentController::class, 'addNote']);
 Route::get('/manager/appointment-notes/{appointmentId}', [ManageAppointmentController::class, 'getNotes']);
 // });
+
+
+
+
+Route::post('/assign-assistant', [AssistantController::class, 'assignAssistant']);
+Route::post('/assign-permissions', [AssistantController::class, 'assignPermissions']);
+Route::get('/my-assistants', [AssistantController::class, 'getMyAssistants']);
+Route::delete('/assistants/{id}', [AssistantController::class, 'deleteMyAssistant']);
+Route::post('/remove-all-permissions', [AssistantController::class, 'removeAllPermissions']);
+Route::post('/remove-permissions', [AssistantController::class, 'removePermissions']);
+ 
+
+
+
