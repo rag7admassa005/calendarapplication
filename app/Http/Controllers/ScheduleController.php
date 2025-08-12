@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Manager;
+use App\Models\Permission;
 use App\Models\Schedule;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -150,7 +151,6 @@ for ($i = 0; $i < $repeatWeeks; $i++) {
 public function updateSchedule(Request $request, $schedule_id)
 {
     $validator = Validator::make($request->all(), [
-        'day_of_week' => 'required|in:saturday,sunday,monday,tuesday,wednesday,thursday,friday',
         'start_time' => 'nullable|date_format:H:i',
         'end_time' => 'nullable|date_format:H:i|after:start_time',
         'repeat_for_weeks' => 'nullable|int|min:1',
@@ -176,7 +176,7 @@ public function updateSchedule(Request $request, $schedule_id)
         return response()->json(['message' => 'This schedule is not for this manager'], 403);
     }
 
-    $day =$original->day_of_week;
+    $day = $original->day_of_week;
     $newStart = $request->start_time ?? $original->start_time;
     $newEnd = $request->end_time ?? $original->end_time;
     $newRepeat = (int) ($request->repeat_for_weeks ?? $original->repeat_for_weeks);
@@ -190,147 +190,24 @@ public function updateSchedule(Request $request, $schedule_id)
         return response()->json(['message' => 'Invalid time format'], 422);
     }
 
-    $totalMinutes = $startCarbon->diffInMinutes($endCarbon);
-    if ($newIsAvailable && ($totalMinutes < $duration || $totalMinutes % $duration !== 0)) {
-        return response()->json(['message' => 'Time slot must be valid for meeting duration'], 422);
+    $totalMinutes = $startCarbon->diffInMinutes($endCarbon, false); // false = ممكن يطلع بالسالب إذا الوقت غلط
+  if ($newIsAvailable) {
+    if ($totalMinutes <= 0) {
+        return response()->json(['message' => 'End time must be after start time'], 422);
     }
 
-  
-  if ($original->is_available && !$newIsAvailable) {
-    // حذف كل السجلات لهذا اليوم القادمة
-    Schedule::where('manager_id', $manager->id)
-        ->where('day_of_week', $day)
-        ->whereDate('date', '>=', now()->toDateString())
-        ->delete();
-
-    // تحويل day_of_week إلى رقم ليتوافق مع Carbon
-    $dayMap = [
-        'sunday' => 0,
-        'monday' => 1,
-        'tuesday' => 2,
-        'wednesday' => 3,
-        'thursday' => 4,
-        'friday' => 5,
-        'saturday' => 6,
-    ];
-
-    $dayNumber = $dayMap[strtolower($day)];
-    $today = Carbon::now();
-    $currentDayNumber = $today->dayOfWeek;
-
-    $daysToAdd = ($dayNumber - $currentDayNumber + 7) % 7;
-    $baseDate = $today->copy()->addDays($daysToAdd);
-$changedSchedules = [];
-    // أنشئ التكرارات
-    for ($i = 0; $i < $newRepeat; $i++) {
-        $date = $baseDate->copy()->addWeeks($i);
-
-       $schedule= Schedule::create([
-            'manager_id' => $manager->id,
-            'day_of_week' => $day,
-            'date' => $date->toDateString(),
-            'start_time' => '00:00',
-            'end_time' => '23:59',
-            'is_available' => false,
-            'repeat_for_weeks' => 1,
-            'meeting_duration_1' => 30,
-            'meeting_duration_2' => 60,
-        ]);
-         // جلب علاقة slots اذا موجودة (تأكد ان العلاقة معرفة في موديل Schedule)
-
-// خزّن السجل الكامل في المصفوفة
-$changedSchedules[] = $schedule;
+    if ($totalMinutes < $duration) {
+        return response()->json(['message' => 'The time range is shorter than the meeting duration'], 422);
     }
 
-    return response()->json(['message' => 'Schedule updated to unavailable', 'data' => $changedSchedules], 200);
-}
-
-     if (!$original->is_available && $newIsAvailable) {
-    // تحويل اسم اليوم إلى رقم مفهوم من Carbon
-    $dayMap = [
-        'sunday' => 0,
-        'monday' => 1,
-        'tuesday' => 2,
-        'wednesday' => 3,
-        'thursday' => 4,
-        'friday' => 5,
-        'saturday' => 6,
-    ];
-
-    $dayNumber = $dayMap[strtolower($day)];
-    $today = Carbon::now();
-    $currentDayNumber = $today->dayOfWeek;
-
-    // حساب الفرق بالأيام للوصول لأقرب تاريخ يطابق اليوم المطلوب
-    $daysToAdd = ($dayNumber - $currentDayNumber + 7) % 7;
-    $baseDate = $today->copy()->addDays($daysToAdd);
-
-    // التأكد أن الفترة الزمنية تقبل القسمة على المدة
-    $startMinutes = Carbon::parse($newStart)->hour * 60 + Carbon::parse($newStart)->minute;
-    $endMinutes = Carbon::parse($newEnd)->hour * 60 + Carbon::parse($newEnd)->minute;
-    $diff = $endMinutes - $startMinutes;
-
-    if ($diff % $duration !== 0) {
+    if ($totalMinutes % $duration !== 0) {
         return response()->json([
-            'message' => 'The selected time range must be divisible by the meeting duration'
+            'message' => "The time range ($totalMinutes minutes) must be divisible by the new meeting duration ($duration minutes)"
         ], 422);
     }
-
-    
-    // التحقق من عدم وجود تعارضات مع أوقات متاحة أخرى لنفس اليوم
-    for ($i = 0; $i < $newRepeat; $i++) {
-        $targetDate = $baseDate->copy()->addWeeks($i)->toDateString();
-
-        $conflict = Schedule::where('manager_id', $manager->id)
-            ->where('day_of_week', $day)
-            ->where('is_available', true)
-            ->whereDate('date', $targetDate)
-            ->where(function ($query) use ($newStart, $newEnd) {
-                $query->where(function ($q) use ($newStart, $newEnd) {
-                    $q->where('start_time', '<', $newEnd)
-                      ->where('end_time', '>', $newStart);
-                });
-            })
-            ->exists();
-
-        if ($conflict) {
-            return response()->json([
-                'message' => 'Schedule conflict exists on ' . $targetDate
-            ], 409);
-        }
-    }
-
-    // حذف جميع الجداول الغير متاحة لهذا اليوم والتواريخ القادمة
-    Schedule::where('manager_id', $manager->id)
-        ->where('day_of_week', $day)
-        ->where('is_available', false)
-        ->whereDate('date', '>=', now()->toDateString())
-        ->delete();
-$changedSchedules = [];
-    // إنشاء الجداول المتاحة الجديدة حسب التكرار
-    for ($i = 0; $i < $newRepeat; $i++) {
-        $date = $baseDate->copy()->addWeeks($i)->toDateString();
-
-         $schedule=Schedule::create([
-            'manager_id' => $manager->id,
-            'day_of_week' => $day,
-            'date' => $date,
-            'start_time' => $newStart,
-            'end_time' => $newEnd,
-            'meeting_duration_1' => $duration,
-            'meeting_duration_2' => 60,
-            'repeat_for_weeks' => 1,
-            'is_available' => true,
-        ]);
-    }
-    $changedSchedules[] = $schedule;
-
-    return response()->json(['message' => 'Schedule updated to available','data' => $changedSchedules], 200);
 }
 
-// الحالة 3: تعديل على يوم متاح
- if ($original->is_available && $newIsAvailable) {
-    // تحويل اسم اليوم إلى رقم مفهوم من Carbon
+
     $dayMap = [
         'sunday' => 0,
         'monday' => 1,
@@ -347,160 +224,272 @@ $changedSchedules = [];
     $daysToAdd = ($dayNumber - $currentDayNumber + 7) % 7;
     $baseDate = $today->copy()->addDays($daysToAdd);
 
-    // حساب الفارق الزمني بالدقائق
-    $startMinutes = Carbon::parse($newStart)->hour * 60 + Carbon::parse($newStart)->minute;
-    $endMinutes = Carbon::parse($newEnd)->hour * 60 + Carbon::parse($newEnd)->minute;
-    $diff = $endMinutes - $startMinutes;
-
-    // التأكد من أن المدة تقبل القسمة على meeting duration
-    if ($diff % $duration !== 0) {
-        return response()->json([
-            'message' => 'The selected time range must be divisible by the meeting duration'
-        ], 422);
-    }
-
-    // التحقق من وجود أي تعارضات مع أوقات أخرى متاحة
-    for ($i = 0; $i < $newRepeat; $i++) {
-        $targetDate = $baseDate->copy()->addWeeks($i)->toDateString();
-
-        $conflict = Schedule::where('manager_id', $manager->id)
+    // الحالة 1: من متاح -> غير متاح
+    if ($original->is_available && !$newIsAvailable) {
+        Schedule::where('manager_id', $manager->id)
             ->where('day_of_week', $day)
-            ->where('is_available', true)
-            ->whereDate('date', $targetDate)
-            ->where(function ($query) use ($newStart, $newEnd) {
-                $query->where(function ($q) use ($newStart, $newEnd) {
-                    $q->where('start_time', '<', $newEnd)
-                      ->where('end_time', '>', $newStart);
-                });
-            })
-            ->exists();
-
-        if ($conflict) {
-            return response()->json([
-                'message' => 'Schedule conflict exists on ' . $targetDate
-            ], 409);
-        }
-    }
-
-    // حذف الجداول القديمة التي تحمل نفس اليوم ونفس الوقت السابق
-    Schedule::where('manager_id', $manager->id)
-        ->where('day_of_week', $day)
-        ->where('start_time', $original->start_time)
-        ->where('end_time', $original->end_time)
-        ->whereDate('date', '>=', now()->toDateString())
-        ->delete();
+            ->whereDate('date', '>=', now()->toDateString())
+            ->delete();
 
         $changedSchedules = [];
-    // إنشاء الجداول الجديدة بالقيم المحدثة
-    for ($i = 0; $i < $newRepeat; $i++) {
-        $date = $baseDate->copy()->addWeeks($i)->toDateString();
+        for ($i = 0; $i < $newRepeat; $i++) {
+            $date = $baseDate->copy()->addWeeks($i);
 
-        $schedule= Schedule::create([
-            'manager_id' => $manager->id,
-            'day_of_week' => $day,
-            'date' => $date,
-            'start_time' => $newStart,
-            'end_time' => $newEnd,
-            'meeting_duration_1' => $duration,
-            'meeting_duration_2' => 60,
-            'repeat_for_weeks' => 1,
-            'is_available' => true,
-        ]);
-    }
-    $changedSchedules[] = $schedule;
+            $schedule = Schedule::create([
+                'manager_id' => $manager->id,
+                'day_of_week' => $day,
+                'date' => $date->toDateString(),
+                'start_time' => '00:00',
+                'end_time' => '23:59',
+                'is_available' => false,
+                'repeat_for_weeks' => 1,
+                'meeting_duration_1' => 30,
+                'meeting_duration_2' => 60,
+            ]);
 
-    return response()->json(['message' => 'Schedule updated successfully','data' => $changedSchedules], 200);
-}
-
-
-        return response()->json(['message' => 'Nothing to update'], 400);
-
-
-}
-public function viewManagerSchedule()
-    {
-        $manager = Auth::guard('manager')->user();
-        if (!$manager) {
-            return response()->json(['message' => 'Manager not authenticated'], 401);
+            $changedSchedules[] = $schedule;
         }
 
-        $schedules = Schedule::where('manager_id', $manager->id)
-            ->orderBy('date')
-            ->orderBy('start_time')
-            ->get();
+        return response()->json(['message' => 'Schedule updated to unavailable', 'data' => $changedSchedules], 200);
+    }
+    // تعديل الغير متاح
 
-        $groupedByDate = [];
+       if (!$original->is_available && !$newIsAvailable) {
+        Schedule::where('manager_id', $manager->id)
+            ->where('day_of_week', $day)
+            ->whereDate('date', '>=', now()->toDateString())
+            ->delete();
 
-        foreach ($schedules as $schedule) {
-            $date = $schedule->date;
-            $dayOfWeek = $schedule->day_of_week;
-            $duration = $schedule->meeting_duration_1;
+        $changedSchedules = [];
+        for ($i = 0; $i < $newRepeat; $i++) {
+            $date = $baseDate->copy()->addWeeks($i);
 
-            try {
-                $start = Carbon::parse($schedule->start_time)->setSeconds(0);
-                $end = Carbon::parse($schedule->end_time)->setSeconds(0);
-            } catch (\Exception $e) {
-                continue;
+            $schedule = Schedule::create([
+                'manager_id' => $manager->id,
+                'day_of_week' => $day,
+                'date' => $date->toDateString(),
+                'start_time' => '00:00',
+                'end_time' => '23:59',
+                'is_available' => false,
+                'repeat_for_weeks' => 1,
+                'meeting_duration_1' => 30,
+                'meeting_duration_2' => 60,
+            ]);
+
+            $changedSchedules[] = $schedule;
+        }
+
+        return response()->json(['message' => 'Schedule updated to unavailable', 'data' => $changedSchedules], 200);
+    }
+    // الحالة 2: من غير متاح -> متاح
+    if (!$original->is_available && $newIsAvailable) {
+        for ($i = 0; $i < $newRepeat; $i++) {
+            $targetDate = $baseDate->copy()->addWeeks($i)->toDateString();
+
+            $conflict = Schedule::where('manager_id', $manager->id)
+                ->where('day_of_week', $day)
+                ->where('is_available', true)
+                ->whereDate('date', $targetDate)
+                ->where(function ($query) use ($newStart, $newEnd) {
+                    $query->where(function ($q) use ($newStart, $newEnd) {
+                        $q->where('start_time', '<', $newEnd)
+                            ->where('end_time', '>', $newStart);
+                    });
+                })
+                ->exists();
+
+            if ($conflict) {
+                return response()->json(['message' => 'Schedule conflict exists on ' . $targetDate], 409);
             }
+        }
+
+        Schedule::where('manager_id', $manager->id)
+            ->where('day_of_week', $day)
+            ->where('is_available', false)
+            ->whereDate('date', '>=', now()->toDateString())
+            ->delete();
+
+        $changedSchedules = [];
+        for ($i = 0; $i < $newRepeat; $i++) {
+            $date = $baseDate->copy()->addWeeks($i)->toDateString();
+
+            $schedule = Schedule::create([
+                'manager_id' => $manager->id,
+                'day_of_week' => $day,
+                'date' => $date,
+                'start_time' => $newStart,
+                'end_time' => $newEnd,
+                'meeting_duration_1' => $duration,
+                'meeting_duration_2' => 60,
+                'repeat_for_weeks' => 1,
+                'is_available' => true,
+            ]);
+
+            $changedSchedules[] = $schedule;
+        }
+
+        return response()->json(['message' => 'Schedule updated to available', 'data' => $changedSchedules], 200);
+    }
+
+    // الحالة 3: تعديل على يوم متاح
+    if ($original->is_available && $newIsAvailable) {
+        for ($i = 0; $i < $newRepeat; $i++) {
+            $targetDate = $baseDate->copy()->addWeeks($i)->toDateString();
+$conflict = Schedule::where('manager_id', $manager->id)
+    ->where('day_of_week', $day)
+    ->where('is_available', true)
+    ->whereDate('date', $targetDate)
+    ->where(function ($query) use ($newStart, $newEnd) {
+        $query->where(function ($q) use ($newStart, $newEnd) {
+            $q->where('start_time', '<', $newEnd)
+              ->where('end_time', '>', $newStart);
+        });
+    })
+    // استثناء السجل الأصلي وتكراراته
+    ->where(function ($query) use ($original) {
+        $query->where('start_time', '!=', $original->start_time)
+              ->orWhere('end_time', '!=', $original->end_time);
+    })
+    ->exists();
 
 
-            // احسب عدد تكرارات نفس اليوم ونفس الفاصل الزمني
-            $repeatedCount = Schedule::where('manager_id', $manager->id)
-                ->where('day_of_week', $dayOfWeek)
-                ->where('start_time', $schedule->start_time)
-                ->where('end_time', $schedule->end_time)
-                ->count();
+            if ($conflict) {
+                return response()->json(['message' => 'Schedule conflict exists on ' . $targetDate], 409);
+            }
+        }
 
-            // تقسيم الفترات حسب المدة
-            $timeSlots = [];
-            if ($schedule->is_available) {
-                while ($start->lt($end)) {
-                    $slotStart = $start->format('H:i');
-                    $slotEnd = $start->copy()->addMinutes($duration)->format('H:i');
+        Schedule::where('manager_id', $manager->id)
+            ->where('day_of_week', $day)
+            ->where('start_time', $original->start_time)
+            ->where('end_time', $original->end_time)
+            ->whereDate('date', '>=', now()->toDateString())
+            ->delete();
 
-                    if ($start->copy()->addMinutes($duration)->gt($end)) break;
+        $changedSchedules = [];
+        for ($i = 0; $i < $newRepeat; $i++) {
+            $date = $baseDate->copy()->addWeeks($i)->toDateString();
 
-                    $timeSlots[] = [
-                        'from' => $slotStart,
-                        'to' => $slotEnd,
-                    ];
+            $schedule = Schedule::create([
+                'manager_id' => $manager->id,
+                'day_of_week' => $day,
+                'date' => $date,
+                'start_time' => $newStart,
+                'end_time' => $newEnd,
+                'meeting_duration_1' => $duration,
+                'meeting_duration_2' => 60,
+                'repeat_for_weeks' => 1,
+                'is_available' => true,
+            ]);
 
-                    $start->addMinutes($duration);
-                }
-            } else {
+            $changedSchedules[] = $schedule;
+        }
+
+        return response()->json(['message' => 'Schedule updated successfully', 'data' => $changedSchedules], 200);
+    }
+
+    return response()->json(['message' => 'Nothing to update'], 400);
+}
+
+
+
+public function viewManagerSchedule()
+{
+    $manager = Auth::guard('manager')->user();
+    $assistant = Auth::guard('assistant')->user();
+
+    if (!$manager && !$assistant) {
+        return response()->json(['message' => 'Unauthorized'], 401);
+    }
+
+    // إذا كان المستخدم مساعد
+    if ($assistant) {
+        $linkedManager = $assistant->manager;
+
+        if (!$linkedManager) {
+            return response()->json(['message' => 'No manager linked to this assistant'], 400);
+        }
+
+        $permission = Permission::where('name', 'view_calendar')->first();
+        if (!$permission || !$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+
+        $managerId = $linkedManager->id;
+    } else {
+        $managerId = $manager->id;
+    }
+
+    $schedules = Schedule::where('manager_id', $managerId)
+        ->orderBy('date')
+        ->orderBy('start_time')
+        ->get();
+
+    $groupedByDate = [];
+
+    foreach ($schedules as $schedule) {
+        $date = $schedule->date;
+        $dayOfWeek = $schedule->day_of_week;
+        $duration = $schedule->meeting_duration_1;
+
+        try {
+            $start = Carbon::parse($schedule->start_time)->setSeconds(0);
+            $end = Carbon::parse($schedule->end_time)->setSeconds(0);
+        } catch (\Exception $e) {
+            continue;
+        }
+
+        $repeatedCount = Schedule::where('manager_id', $managerId)
+            ->where('day_of_week', $dayOfWeek)
+            ->where('start_time', $schedule->start_time)
+            ->where('end_time', $schedule->end_time)
+            ->count();
+
+        $timeSlots = [];
+        if ($schedule->is_available) {
+            while ($start->lt($end)) {
+                $slotStart = $start->format('H:i');
+                $slotEnd = $start->copy()->addMinutes($duration)->format('H:i');
+
+                if ($start->copy()->addMinutes($duration)->gt($end)) break;
+
                 $timeSlots[] = [
-                    'from' => '00:00',
-                    'to' => '23:59',
+                    'from' => $slotStart,
+                    'to' => $slotEnd,
                 ];
+
+                $start->addMinutes($duration);
             }
-
-            // إذا التاريخ غير موجود بعد، أضفه
-            if (!isset($groupedByDate[$date])) {
-                $groupedByDate[$date] = [
-
-                    'id' => $schedule->id,
-                    'date' => $date,
-                    'day_of_week' => $dayOfWeek,
-                    'start_time' => $schedule->start_time,
-                    'end_time' => $schedule->end_time,
-                    'meeting_duration' => $schedule->is_available ? $schedule->meeting_duration_1 : null,
-                    'is_available' => $schedule->is_available,
-                    'repeated_count' => $repeatedCount,
-                    'slots' => []
-                ];
-            }
-
-            // أضف هذه الفترة
-            $groupedByDate[$date]['slots'][] = [
-                'time_slots' => $timeSlots,
+        } else {
+            $timeSlots[] = [
+                'from' => '00:00',
+                'to' => '23:59',
             ];
         }
 
-        // ترتيب النتائج حسب التاريخ وتحويلها لمصفوفة
-        $result = collect($groupedByDate)->sortBy('date')->values()->toArray();
+        if (!isset($groupedByDate[$date])) {
+            $groupedByDate[$date] = [
+                'id' => $schedule->id,
+                'date' => $date,
+                'day_of_week' => $dayOfWeek,
+                'start_time' => $schedule->start_time,
+                'end_time' => $schedule->end_time,
+                'meeting_duration' => $schedule->is_available ? $schedule->meeting_duration_1 : null,
+                'is_available' => $schedule->is_available,
+                'repeated_count' => $repeatedCount,
+                'slots' => []
+            ];
+        }
 
-        return response()->json($result, 200);
+        $groupedByDate[$date]['slots'][] = [
+            'time_slots' => $timeSlots,
+        ];
     }
+
+    $result = collect($groupedByDate)->sortBy('date')->values()->toArray();
+
+    return response()->json($result, 200);
+}
+
 
 
 
