@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AssistantController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\JobController;
 use App\Http\Controllers\ManageAppointmentController;
@@ -8,7 +9,6 @@ use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SuperadminController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AssistantController;
 
 // -------------------- Auth Routes --------------------
 
@@ -50,10 +50,10 @@ Route::get('/jobs/{id}',[JobController::class,'getJobsBySection']);
 
 // محمية: للمدير فقط
 // Route::middleware('manager')->group(function () {
-//     Route::post('/manager/jobs', [JobController::class, 'addJob']);
-//     Route::post('/emanager/jobs/{job_id}', [JobController::class, 'editJob']);
-//     Route::post('/dmanager/jobs/{job_id}', [JobController::class, 'deletJob']);
-//     Route::get('/show/manager/jobs', [JobController::class, 'myJobs']);
+//      Route::post('/manager/jobs', [JobController::class, 'addJob']);
+//      Route::post('/emanager/jobs/{job_id}', [JobController::class, 'editJob']);
+//      Route::post('/dmanager/jobs/{job_id}', [JobController::class, 'deletJob']);
+//      Route::get('/show/manager/jobs', [JobController::class, 'myJobs']);
 // });
 
 // -------------------- Schedule & Appointment Routes --------------------
@@ -69,35 +69,36 @@ Route::post('/invitations/{id}/cancel-response', [UserController::class, 'cancel
 Route::middleware('auth:api')->post('/group-appointments/request', [UserController::class, 'requestGroupAppointment']);
 Route::middleware('auth:api')->get('/users', [UserController::class, 'AllUsers']);
 Route::middleware('auth:api')->get('/my-appointments', [UserController::class, 'AllAppointments']);
+
 // راوتات المدير لإدارة الجدول الزمني
 Route::middleware('manager')->group(function () {
-Route::post('/add/schedule', [ScheduleController::class, 'addSchedule']);
-Route::post('/update/schedule/{id}', [ScheduleController::class, 'updateSchedule']);
-Route::get('/show/manager/schedule', [ScheduleController::class, 'viewManagerSchedule']);
+    Route::post('/add/schedule', [ScheduleController::class, 'addSchedule']);
+    Route::post('/update/schedule/{id}', [ScheduleController::class, 'updateSchedule']);
+    Route::get('/show/manager/schedule', [ScheduleController::class, 'viewManagerSchedule']);
 });
 
-// Route::middleware(['manager_or_assistant'])->group(function () {
-Route::get('show/requests', [ManageAppointmentController::class, 'showAppointmentRequests']);
-Route::post('appointments/approve/{request_id}', [ManageAppointmentController::class, 'approveAppointmentRequest']);
-Route::post('appointments/reschedule/{id}', [ManageAppointmentController::class, 'rescheduleAppointmentRequest']);
-Route::post('/appointments/cancel/{id}', [ManageAppointmentController::class, 'cancelAppointmentRequest']);
-Route::get('/manager/users', [ManageAppointmentController::class,'getUsers']);
-Route::post('/manager/appointments/invite-existing', [ManageAppointmentController::class, 'inviteUserToAppointment']);
-Route::get('/manager/invitations', [ManageAppointmentController::class, 'getSentInvitations']);
-Route::post('/manager/appointment-notes', [ManageAppointmentController::class, 'addNote']);
-Route::get('/manager/appointment-notes/{appointmentId}', [ManageAppointmentController::class, 'getNotes']);
-// });
+Route::middleware(['manager_or_assistant'])->group(function () {
+    Route::get('show/requests', [ManageAppointmentController::class, 'showAppointmentRequests']);
+    Route::post('appointments/approve/{request_id}', [ManageAppointmentController::class, 'approveAppointmentRequest']);
+    Route::post('appointments/reschedule/{id}', [ManageAppointmentController::class, 'rescheduleAppointmentRequest']);
+    Route::post('/appointments/cancel/{id}', [ManageAppointmentController::class, 'cancelAppointmentRequest']);
+    Route::get('/manager/users', [ManageAppointmentController::class,'getUsers']);
+    Route::post('/manager/appointments/invite-existing', [ManageAppointmentController::class, 'inviteUserToAppointment']);
+    Route::get('/manager/invitations', [ManageAppointmentController::class, 'getSentInvitations']);
+    Route::post('/manager/appointment-notes', [ManageAppointmentController::class, 'addNote']);
+    Route::get('/manager/appointment-notes/{appointmentId}', [ManageAppointmentController::class, 'getNotes']);
+    Route::post('editnote/{noteId}', [ManageAppointmentController::class, 'updateNote']);
+    Route::post('deletenote/{noteId}', [ManageAppointmentController::class, 'deleteNote']);
+    Route::get('/getnotes', [ManageAppointmentController::class, 'getAllNotes']);
+});
 
+// -------------------- Assistant Routes  --------------------
 
-
-
-Route::post('/assign-assistant', [AssistantController::class, 'assignAssistant']);
-Route::post('/assign-permissions', [AssistantController::class, 'assignPermissions']);
-Route::get('/my-assistants', [AssistantController::class, 'getMyAssistants']);
-Route::delete('/assistants/{id}', [AssistantController::class, 'deleteMyAssistant']);
-Route::post('/remove-all-permissions', [AssistantController::class, 'removeAllPermissions']);
-Route::post('/remove-permissions', [AssistantController::class, 'removePermissions']);
- 
-
-
-
+Route::middleware('manager')->group(function () {
+    Route::post('/assign-assistant', [AssistantController::class, 'assignAssistant']);
+    Route::post('/assign-permissions', [AssistantController::class, 'assignPermissions']);
+    Route::get('/my-assistants', [AssistantController::class, 'getMyAssistants']);
+    Route::delete('/assistants/{id}', [AssistantController::class, 'deleteMyAssistant']);
+    Route::post('/remove-all-permissions', [AssistantController::class, 'removeAllPermissions']);
+    Route::post('/remove-permissions', [AssistantController::class, 'removePermissions']);
+});
