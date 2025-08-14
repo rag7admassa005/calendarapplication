@@ -38,4 +38,9 @@ class Appointment extends Model
 {
     return $this->morphMany(Invitation::class, 'related_to');
 }
+
+public function assistantActivities()
+    {
+        return $this->morphMany(AssistantActivity::class, 'relatedTo');
+    }
 }

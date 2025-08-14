@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AssistantController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\JobController;
 use App\Http\Controllers\ManageAppointmentController;
@@ -75,7 +76,7 @@ Route::post('/update/schedule/{id}', [ScheduleController::class, 'updateSchedule
 Route::get('/show/manager/schedule', [ScheduleController::class, 'viewManagerSchedule']);
 });
 
-// Route::middleware(['manager_or_assistant'])->group(function () {
+ Route::middleware(['manager_or_assistant'])->group(function () {
 Route::get('show/requests', [ManageAppointmentController::class, 'showAppointmentRequests']);
 Route::post('appointments/approve/{request_id}', [ManageAppointmentController::class, 'approveAppointmentRequest']);
 Route::post('appointments/reschedule/{id}', [ManageAppointmentController::class, 'rescheduleAppointmentRequest']);
@@ -84,5 +85,10 @@ Route::get('/manager/users', [ManageAppointmentController::class,'getUsers']);
 Route::post('/manager/appointments/invite-existing', [ManageAppointmentController::class, 'inviteUserToAppointment']);
 Route::get('/manager/invitations', [ManageAppointmentController::class, 'getSentInvitations']);
 Route::post('/manager/appointment-notes', [ManageAppointmentController::class, 'addNote']);
-Route::get('/manager/appointment-notes/{appointmentId}', [ManageAppointmentController::class, 'getNotes']);
-// });
+Route::get('/manager/appointment-notes/{appointmentId}', [ManageAppointmentController::class, 'getAppointmentNotes']);
+Route::post('editnote/{noteId}', [ManageAppointmentController::class, 'updateNote']);
+Route::post('deletenote/{noteId}', [ManageAppointmentController::class, 'deleteNote']);
+ Route::get('/getnotes', [ManageAppointmentController::class, 'getAllNotes']);
+ });
+
+Route::post('/assign-assistant', [AssistantController::class, 'assignAssistant'])->middleware('manager');

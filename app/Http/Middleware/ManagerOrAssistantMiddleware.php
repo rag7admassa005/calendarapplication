@@ -5,26 +5,25 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
-use Tymon\JWTAuth\Facades\JWTAuth;
 
-class ManagerMiddleware
+class ManagerOrAssistantMiddleware
 {
     /**
      * Handle an incoming request.
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
-   public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next): Response
     {
-        // جرب التوثيق كمدير
-        if (Auth::guard('manager')->check()) {
+         $manager = Auth::guard('manager')->user();
+        $assistant = Auth::guard('assistant')->user();
+
+        if ($manager || $assistant) {
             return $next($request);
         }
 
-      
-
         return response()->json(['message' => 'Unauthorized'], 401);
     }
-}
+    }
+

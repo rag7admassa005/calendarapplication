@@ -18,16 +18,50 @@ use App\Notifications\AppointmentInvitation;
 use App\Notifications\AppointmentRejected;
 use App\Notifications\AppointmentRescheduled;
 use Carbon\Carbon;
+use Illuminate\Contracts\Validation\Validator as ValidationValidator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class ManageAppointmentController extends Controller
 {
     // عرض الطلبات مع امكانية التصفية
-   public function showAppointmentRequests(Request $request)
+ public function showAppointmentRequests(Request $request)
 {
+    $manager = Auth::guard('manager')->user();
+    $assistant = Auth::guard('assistant')->user();
+
+    if (!$manager && !$assistant) {
+        return response()->json(['message' => 'Unauthorized'], 401);
+    }
+
+    // إذا كان المستخدم مساعد
+    if ($assistant) {
+        // جلب المدير المرتبط بهذا المساعد
+        $linkedManager = $assistant->manager;
+
+        if (!$linkedManager) {
+            return response()->json(['message' => 'No manager linked to this assistant'], 400);
+        }
+
+        // نتحقق أن المساعد يحاول الوصول لمستخدمين مرتبطين بمديره فقط
+        if ($manager && $manager->id !== $linkedManager->id) {
+            return response()->json(['message' => 'Assistant not linked to this manager'], 403);
+        }
+
+        // نثبت المدير المرتبط فعليًا
+        $manager = $linkedManager;
+
+        // التحقق من الصلاحية
+        $permission = Permission::where('name', 'view_appointment_requests')->first();
+        if (!$permission || !$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+    }
+
+    // التحقق من الفلترة
     $validator = Validator::make($request->all(), [
         'status' => 'nullable|in:pending,approved,rejected,rescheduled,cancelled',
     ]);
@@ -36,11 +70,7 @@ class ManageAppointmentController extends Controller
         return response()->json(['errors' => $validator->errors()], 422);
     }
 
-    $manager = Auth::guard('manager')->user();
-    if (!$manager) {
-        return response()->json(['message' => 'Manager not found'], 404);
-    }
-
+    // استعلام الطلبات
     $query = AppointmentRequest::with([
         'user:id,first_name,last_name,email',
         'reviewedBy',
@@ -51,39 +81,39 @@ class ManageAppointmentController extends Controller
         $query->where('status', $request->status);
     }
 
-    $appointmentRequests = $query->get()->map(function ($request) {
+    $appointmentRequests = $query->get()->map(function ($appointment) {
         return [
-            'id' => $request->id,
-            'preferred_date' => $request->preferred_date,
-            'preferred_start_time' => $request->preferred_start_time,
-            'end_time' => $request->preferred_end_time,
-            'duration' => $request->preferred_duration,
-            'status' => $request->status,
-            'reason' => $request->reason,
-            'requested_at' => $request->requested_at,
-            'user' => [
-                'id' => $request->user->id,
-                'first_name' => $request->user->first_name,
-                'last_name' => $request->user->last_name,
-                'email' => $request->user->email,
-            ],
-            'reviewed_by' => $request->reviewedBy ? [
-                'type' => class_basename($request->reviewed_by_type),
-                'id' => $request->reviewedBy->id,
-                'name' => $request->reviewedBy->name ?? null,  // تأكد من وجود هذا الحقل في جدول المراجع (Manager أو Assistant)
+            'id' => $appointment->id,
+            'preferred_date' => $appointment->preferred_date,
+            'preferred_start_time' => $appointment->preferred_start_time,
+            'end_time' => $appointment->preferred_end_time,
+            'duration' => $appointment->preferred_duration,
+            'status' => $appointment->status,
+            'reason' => $appointment->reason,
+            'requested_at' => $appointment->requested_at,
+            'user' => $appointment->user ? [
+                'id' => $appointment->user->id,
+                'first_name' => $appointment->user->first_name,
+                'last_name' => $appointment->user->last_name,
+                'email' => $appointment->user->email,
             ] : null,
-            'invitations' => $request->invitations->map(function ($inv) {
+            'reviewed_by' => $appointment->reviewedBy ? [
+                'type' => class_basename($appointment->reviewed_by_type),
+                'id' => $appointment->reviewedBy->id,
+                'name' => $appointment->reviewedBy->name ?? null,
+            ] : null,
+            'invitations' => $appointment->invitations->map(function ($inv) {
                 return [
                     'id' => $inv->id,
                     'status' => $inv->status,
                     'sent_at' => $inv->sent_at,
                     'responded_at' => $inv->responded_at,
-                    'invited_user' => [
+                    'invited_user' => $inv->invitedUser ? [
                         'id' => $inv->invitedUser->id,
                         'first_name' => $inv->invitedUser->first_name,
                         'last_name' => $inv->invitedUser->last_name,
                         'email' => $inv->invitedUser->email,
-                    ],
+                    ] : null,
                 ];
             }),
         ];
@@ -94,6 +124,7 @@ class ManageAppointmentController extends Controller
         'data' => $appointmentRequests
     ], 200);
 }
+
 
 
  public function approveAppointmentRequest($id)
@@ -198,10 +229,11 @@ class ManageAppointmentController extends Controller
     // 📝 تسجيل تتبع النشاط للمساعد فقط
     if ($assistant) {
         AssistantActivity::create([
-            'assistant_id' => $assistant->id,
-            'permission_id' => $permission->id,
-             'appointment_request_id' => $request->id,
-            'executed_at' => now(),
+            'assistant_id'    => $assistant->id,
+    'permission_id'   => $permission->id,
+    'related_to_type' => AppointmentRequest::class,
+    'related_to_id'   =>  $request->id,
+    'executed_at'     => now(),
         ]);
     }
 
@@ -341,10 +373,11 @@ public function rescheduleAppointmentRequest(Request $request, $id)
 
     if ($assistant) {
         AssistantActivity::create([
-            'assistant_id' => $assistant->id,
-            'permission_id' => $permission->id,
-            'appointment_request_id' => $appointmentRequest->id,
-            'executed_at' => now(),
+            'assistant_id'    => $assistant->id,
+    'permission_id'   => $permission->id,
+    'related_to_type' => AppointmentRequest::class,
+    'related_to_id'   => $appointmentRequest->id,
+    'executed_at'     => now(),
         ]);
     }
 
@@ -400,6 +433,7 @@ public function rescheduleAppointmentRequest(Request $request, $id)
         ->where('status', 'accepted')
         ->pluck('invited_user_id')
         ->toArray();
+        
 
     // تحديث حالة الطلب
     $reviewedBy = $manager ?: $assistant;
@@ -424,18 +458,23 @@ public function rescheduleAppointmentRequest(Request $request, $id)
     ->whereHas('users', function ($query) use ($requestApp) {
         $query->where('users.id', $requestApp->user_id);
     })->first();
+
+    if ($existingAppointment) {
+    $existingAppointment->users()->detach(); // حذف روابط المستخدمين
+    $existingAppointment->delete(); // حذف الموعد نفسه
+}
+
     
-        $existingAppointment->users()->detach(); // حذف روابط المستخدمين
-        $existingAppointment->delete(); // حذف الموعد نفسه
-    
+
 
     // تسجيل النشاط للمساعد فقط
     if ($assistant) {
         AssistantActivity::create([
-            'assistant_id' => $assistant->id,
-            'permission_id' => $permission->id,
-            'appointment_request_id' => $requestApp->id,
-            'executed_at' => now(),
+            'assistant_id'    => $assistant->id,
+    'permission_id'   => $permission->id,
+    'related_to_type' => AppointmentRequest::class,
+    'related_to_id'   => $requestApp->id,
+    'executed_at'     => now(),
         ]);
     }
 
@@ -452,93 +491,143 @@ public function rescheduleAppointmentRequest(Request $request, $id)
 
     // عرض جميع المستخدمين المرتبطين بهالمدير وتصفيتهم حسب العمل 
     public function getUsers(Request $request)
-    {
-        $manager = Auth::guard('manager')->user();
-        if (!$manager) {
-            return response(['message' => 'manager is not found'], 404);
-        }
-        $validator = Validator::make($request->all(), [
-            'name' => 'nullable|integer|exists:jobs,id',
-        ]);
+{
+    $manager = Auth::guard('manager')->user();
+    $assistant = Auth::guard('assistant')->user();
 
-        if ($validator->fails()) {
-            return response(['errors' => $validator->errors()], 422);
-        }
-
-        // بدء الاستعلام بجلب المستخدمين المرتبطين بهذا المدير فقط
-        $query = User::where('manager_id', $manager->id);
-
-        // إذا تم تمرير job_id
-        if ($request->has('job_id')) {
-            $jobId = $request->job_id;
-
-         
-
-            // تطبيق التصفية حسب الوظيفة
-            $query->where('job_id', $jobId);
-        }
-
-        $users = $query->get();
-
-        return response([
-            'users' => $users
-        ]);
+    if (!$manager && !$assistant) {
+        return response()->json(['message' => 'Unauthorized'], 401);
     }
+
+    // إذا كان المستخدم مساعد
+    if ($assistant) {
+        // جلب المدير المرتبط بهذا المساعد
+        $linkedManager = $assistant->manager;
+
+        if (!$linkedManager) {
+            return response()->json(['message' => 'No manager linked to this assistant'], 400);
+        }
+
+        // نتحقق أن المساعد يحاول الوصول لمستخدمين مرتبطين بمديره فقط
+        if ($manager && $manager->id !== $linkedManager->id) {
+            return response()->json(['message' => 'Assistant not linked to this manager'], 403);
+        }
+
+        // نثبت المدير المرتبط فعليًا
+        $manager = $linkedManager;
+
+        // التحقق من الصلاحية
+        $permission = Permission::where('name', 'view_users')->first();
+        if (!$permission || !$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+    }
+
+    // التحقق من مدخلات الطلب
+    $validator = Validator::make($request->all(), [
+        'job_id' => 'nullable|integer|exists:jobs,id',
+    ]);
+
+    if ($validator->fails()) {
+        return response(['errors' => $validator->errors()], 422);
+    }
+
+    // بدء الاستعلام بجلب المستخدمين المرتبطين بالمدير
+    $query = User::where('manager_id', $manager->id);
+
+    // إذا تم تمرير job_id
+    if ($request->has('job_id')) {
+        $query->where('job_id', $request->job_id);
+    }
+
+    $users = $query->get();
+
+    return response([
+        'users' => $users
+    ]);
+}
 public function inviteUserToAppointment(Request $request)
 {
     $manager = Auth::guard('manager')->user();
+    $assistant = Auth::guard('assistant')->user();
 
-    if (!$manager) {
-        return response(['message' => 'Manager not found'], 404);
+    if (!$manager && !$assistant) {
+        return response(['message' => 'Unauthorized'], 401);
     }
 
+    // تحديد المدير المالك
+    if ($assistant) {
+        // تحقق أن المساعد له مدير
+        if (!$assistant->manager) {
+            return response()->json(['message' => 'This assistant does not belong to any manager'], 403);
+        }
+
+        $ownerManager = $assistant->manager;
+
+        // تحقق من صلاحية المساعد لإرسال الدعوات
+        $permission = Permission::where('name', 'invite_users')->first();
+        if (!$permission || !$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+    } else {
+        $ownerManager = $manager;
+    }
+
+    // تحقق من المدخلات
     $validator = Validator::make($request->all(), [
-        'user_id' => 'required|exists:users,id',
-        'appointment_id' => 'nullable|exists:appointments,id',
-        'date' => 'required_without:appointment_id|date',
-        'start_time' => 'required_without:appointment_id|date_format:H:i',
+        'user_id'       => 'required|exists:users,id',
+        'appointment_id'=> 'nullable|exists:appointments,id',
+        'date'          => 'required_without:appointment_id|date',
+        'start_time'    => 'required_without:appointment_id|date_format:H:i',
     ]);
 
     if ($validator->fails()) {
         return response()->json(['errors' => $validator->errors()], 422);
     }
 
+    // تحقق أن المستخدم تابع لنفس المدير
     $user = User::find($request->user_id);
-    if (!$user) {
-        return response(['message' => 'User not found'], 404);
-    }
-
-    // تحقق أن المستخدم يتبع للمدير
-    $isUserBelongsToManager = $manager->users()->where('users.id', $user->id)->exists();
-    if (!$isUserBelongsToManager) {
+    $belongsToManager = $ownerManager->users()->where('users.id', $user->id)->exists();
+    if (!$belongsToManager) {
         return response()->json(['message' => 'User does not belong to this manager'], 403);
     }
 
-    // ==== الحالة 1: الموعد موجود مسبقاً ====
-    if ($request->filled('appointment_id')) {
-        $appointment = Appointment::find($request->appointment_id);
+    // ===== الحالة 1: موعد موجود =====
+if ($request->filled('appointment_id')) {
+    $appointment = Appointment::find($request->appointment_id);
 
-        if ($appointment->manager_id !== $manager->id) {
-            return response()->json(['message' => 'Unauthorized - not your appointment'], 403);
-        }
+    if ($appointment->manager_id !== $ownerManager->id) {
+        return response()->json(['message' => 'Unauthorized - not your appointment'], 403);
+    }
 
-        $alreadyInvited = Invitation::where('related_to_type', get_class($appointment))
-            ->where('related_to_id', $appointment->id)
-            ->where('invited_user_id', $user->id)
-            ->exists();
+    // تحقق إذا المستخدم موجود أساسًا في الموعد
+    $alreadyParticipant = DB::table('appointment_user')
+        ->where('appointment_id', $appointment->id)
+        ->where('user_id', $user->id)
+        ->exists();
 
-        if ($alreadyInvited) {
-            return response()->json(['message' => 'User already invited to this appointment'], 409);
-        }
-    } else {
-        // ==== الحالة 2: إنشاء موعد جديد ====
+    if ($alreadyParticipant) {
+        return response()->json(['message' => 'User is already part of this appointment'], 409);
+    }
 
+    // تحقق إذا المستخدم مدعو مسبقًا
+    $alreadyInvited = Invitation::where('related_to_type', Appointment::class)
+        ->where('related_to_id', $appointment->id)
+        ->where('invited_user_id', $user->id)
+        ->exists();
+
+    if ($alreadyInvited) {
+        return response()->json(['message' => 'User already invited to this appointment'], 409);
+    }
+}
+
+    // ===== الحالة 2: إنشاء موعد جديد =====
+    else {
         $date = $request->date;
         $start_time = $request->start_time;
         $day = strtolower(Carbon::parse($date)->format('l'));
 
-        // جلب جدول المواعيد للمدير
-        $schedule = Schedule::where('manager_id', $manager->id)
+        $schedule = Schedule::where('manager_id', $ownerManager->id)
             ->where('day_of_week', $day)
             ->where('is_available', true)
             ->where('start_time', '<=', $start_time)
@@ -549,18 +638,15 @@ public function inviteUserToAppointment(Request $request)
             return response()->json(['message' => 'The manager is not available at this time.'], 400);
         }
 
-        // حساب وقت الانتهاء حسب المدة من الجدولة
         $duration = $schedule->meeting_duration_1;
         $end_time_obj = Carbon::createFromFormat('H:i', $start_time)->addMinutes($duration);
         $end_time = $end_time_obj->format('H:i');
 
-        // تحقق أن نهاية الموعد لا تتجاوز نهاية الجدول
         if ($end_time > $schedule->end_time) {
             return response()->json(['message' => 'Appointment exceeds available schedule.'], 400);
         }
 
-        // تحقق من وجود موعد مطابق مسبقاً
-        $existingAppointment = Appointment::where('manager_id', $manager->id)
+        $existingAppointment = Appointment::where('manager_id', $ownerManager->id)
             ->where('date', $date)
             ->where('start_time', $start_time)
             ->where('end_time', $end_time)
@@ -568,91 +654,389 @@ public function inviteUserToAppointment(Request $request)
             ->first();
 
         if ($existingAppointment) {
-            $alreadyInvited = Invitation::where('related_to_type', get_class($existingAppointment))
+            $alreadyInvited = Invitation::where('related_to_type', Appointment::class)
                 ->where('related_to_id', $existingAppointment->id)
                 ->where('invited_user_id', $user->id)
                 ->exists();
 
             if ($alreadyInvited) {
-                return response()->json(['message' => 'User already invited to an identical appointment'], 409);
+                return response()->json(['message' => 'User already invited to this identical appointment'], 409);
             }
 
             $appointment = $existingAppointment;
         } else {
-            // إنشاء الموعد الجديد
             $appointment = Appointment::create([
-                'manager_id' => $manager->id,
-                'assistant_id' => null,
-                'date' => $date,
-                'start_time' => $start_time,
-                'end_time' => $end_time,
-                'duration' => $duration,
-                'status' => 'pending',
+                'manager_id'   => $ownerManager->id,
+                'assistant_id' => $assistant?->id,
+                'date'         => $date,
+                'start_time'   => $start_time,
+                'end_time'     => $end_time,
+                'duration'     => $duration,
+                'status'       => 'pending',
             ]);
         }
     }
 
     // إنشاء الدعوة
+    $inviter = $manager ?: $assistant;
     $invitation = Invitation::create([
-        'related_to_type' => get_class($appointment),
-        'related_to_id' => $appointment->id,
+        'related_to_type' => Appointment::class,
+        'related_to_id'   => $appointment->id,
         'invited_user_id' => $user->id,
-        'invited_by_type' => get_class($manager),
-        'invited_by_id' => $manager->id,
-        'status' => 'pending',
-        'sent_at' => now(),
+        'invited_by_type' => get_class($inviter),
+        'invited_by_id'   => $inviter->id,
+        'status'          => 'pending',
+        'sent_at'         => now(),
     ]);
 
-    // إرسال إشعار (اختياري)
-    $user->notify(new AppointmentInvitation($appointment, $manager));
-
+    $user->notify(new AppointmentInvitation($appointment, $ownerManager));
+      if ($assistant) {
+AssistantActivity::create([
+    'assistant_id'    => $assistant->id,
+    'permission_id'   => $permission->id,
+    'related_to_type' => Appointment::class,          // أو AppointmentRequest::class
+    'related_to_id'   => $appointment->id,
+    'executed_at'     => now(),
+]);
+      }
     return response()->json([
-        'message' => 'Invitation sent successfully.',
+        'message'     => 'Invitation sent successfully.',
         'appointment' => $appointment,
-        'invitation' => $invitation,
+        'invitation'  => $invitation,
     ]);
 }
 
 
-    public function getSentInvitations(Request $request)
-    {
-        $manager = Auth::guard('manager')->user();
+public function getSentInvitations(Request $request)
+{
+    $manager = Auth::guard('manager')->user();
+    $assistant = Auth::guard('assistant')->user();
 
-        if (!$manager) {
-            return response()->json(['message' => 'Manager not found'], 404);
-        }
-
-        // جلب الدعوات يلي أرسلها المدير
-        $invitations = Invitation::where('invited_by_type', get_class($manager))
-            ->where('invited_by_id', $manager->id)
-            ->with(['invitedUser:id,first_name,last_name,email', 'relatedTo']) // جلب معلومات إضافية
-            ->latest()
-            ->get();
-
-        return response()->json([
-            'invitations' => $invitations
-        ]);
+    if (!$manager && !$assistant) {
+        return response()->json(['message' => 'Unauthorized'], 401);
     }
 
+    // حالة المساعد
+    if ($assistant) {
+        // جلب المدير المرتبط بالمساعد
+        $linkedManager = $assistant->manager;
 
-    public function getNotes($appointmentId)
-    {
-        $manager = Auth::guard('manager')->user();
-        $appointment = Appointment::findOrFail($appointmentId);
+        if (!$linkedManager) {
+            return response()->json(['message' => 'No manager linked to this assistant'], 400);
+        }
 
-        // تحقق أن المدير صاحب الموعد
+        // التحقق من صلاحية المساعد
+        $permission = Permission::where('name', 'view_invitations')->first();
+        if (!$permission || !$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+
+        // جلب IDs كل المساعدين المرتبطين بنفس المدير
+        $assistantIds = $linkedManager->assistants()->pluck('id')->toArray();
+
+        // جلب الدعوات التي أرسلها المدير أو أي مساعد تابع للمدير
+        $invitations = Invitation::where(function ($query) use ($linkedManager, $assistantIds) {
+            $query->where(function ($q) use ($linkedManager) {
+                $q->where('invited_by_type', get_class($linkedManager))
+                  ->where('invited_by_id', $linkedManager->id);
+            })
+            ->orWhere(function ($q) use ($assistantIds) {
+                $q->where('invited_by_type', \App\Models\Assistant::class)
+                  ->whereIn('invited_by_id', $assistantIds);
+            });
+        })
+        ->with(['invitedUser:id,first_name,last_name,email', 'relatedTo'])
+        ->latest()
+        ->get();
+
+        return response()->json(['invitations' => $invitations]);
+    }
+
+    // حالة المدير
+    if ($manager) {
+        // جلب IDs المساعدين التابعين للمدير
+        $assistantIds = $manager->assistants()->pluck('id')->toArray();
+
+        // جلب الدعوات التي أرسلها المدير أو أي مساعد تابع له
+        $invitations = Invitation::where(function ($query) use ($manager, $assistantIds) {
+            $query->where(function ($q) use ($manager) {
+                $q->where('invited_by_type', get_class($manager))
+                  ->where('invited_by_id', $manager->id);
+            })
+            ->orWhere(function ($q) use ($assistantIds) {
+                $q->where('invited_by_type', \App\Models\Assistant::class)
+                  ->whereIn('invited_by_id', $assistantIds);
+            });
+        })
+        ->with(['invitedUser:id,first_name,last_name,email', 'relatedTo'])
+        ->latest()
+        ->get();
+
+        return response()->json(['invitations' => $invitations]);
+    }
+}
+
+public function addNote(Request $request)
+{
+    $manager = Auth::guard('manager')->user();
+    $assistant = Auth::guard('assistant')->user();
+
+    if (!$manager && !$assistant) {
+        return response()->json(['message' => 'Unauthorized'], 401);
+    }
+
+    // تحقق من صحة المدخلات
+    $validator = Validator::make($request->all(), [
+        'appointment_id' => 'required|exists:appointments,id',
+        'notes'          => 'required|string',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    $appointment = Appointment::find($request->appointment_id);
+
+    // تحديد المدير المالك للموعد
+    $ownerManager = $appointment->manager;
+
+    if ($assistant) {
+        // تحقق أن المساعد تابع للمدير
+        if ($assistant->manager_id !== $ownerManager->id) {
+            return response()->json(['message' => 'Unauthorized assistant'], 403);
+        }
+
+        // تحقق الصلاحية (مثلاً 'add_notes')
+        $permission = Permission::where('name', 'add_notes')->first();
+        if (!$permission || !$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+    } else {
+        // تحقق أن المدير هو مالك الموعد
+        if ($manager->id !== $ownerManager->id) {
+            return response()->json(['message' => 'Unauthorized manager'], 403);
+        }
+    }
+
+    // إنشاء الملاحظة
+    $note = AppointmentNote::create([
+        'appointment_id' => $appointment->id,
+        'author_type'    => $manager ? get_class($manager) : get_class($assistant),
+        'author_id'      => $manager ? $manager->id : $assistant->id,
+        'notes'         => $request->notes,
+    ]);
+
+    // تسجيل نشاط المساعد
+    if ($assistant) {
+       AssistantActivity::create([
+    'assistant_id'    => $assistant->id,
+    'permission_id'   => $permission->id,
+    'related_to_type' => Appointment::class,          // أو AppointmentRequest::class
+    'related_to_id'   => $appointment->id,
+    'executed_at'     => now(),
+]);
+    }
+
+    return response()->json([
+        'message' => 'Note added successfully.',
+        'note'    => $note,
+    ]);
+}
+
+//ملاحظات موعد 
+public function getAppointmentNotes($appointmentId)
+{
+    $manager = Auth::guard('manager')->user();
+    $assistant = Auth::guard('assistant')->user();
+
+    $appointment = Appointment::findOrFail($appointmentId);
+
+    // حالة المدير: فقط اذا هو صاحب الموعد
+    if ($manager) {
         if ($appointment->manager_id !== $manager->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
-
-        $notes = AppointmentNote::where('appointment_id', $appointmentId)
-            ->with('author') // إذا بدك تعرض اسم المدير أو المساعد
-            ->latest()
-            ->get();
-
-        return response()->json([
-            'appointment_id' => $appointmentId,
-            'notes' => $notes
-        ]);
     }
+    // حالة المساعد: لازم يكون تابع لنفس المدير وصلاحية
+    elseif ($assistant) {
+        $ownerManager = $assistant->manager;
+        if (!$ownerManager || $appointment->manager_id !== $ownerManager->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // // تحقق صلاحية المساعد
+        // $permission = Permission::where('name', 'view_appointment_notes')->first();
+        // if (!$permission || !$assistant->permissions->contains($permission->id)) {
+        //     return response()->json(['message' => 'Permission denied'], 403);
+        // }
+    }
+    // غير مسجل دخول كمدير أو مساعد
+    else {
+        return response()->json(['message' => 'Unauthorized'], 401);
+    }
+
+    $notes = AppointmentNote::where('appointment_id', $appointmentId)
+        ->with('author') // لعرض اسم المدير أو المساعد
+        ->latest()
+        ->get();
+
+    return response()->json([
+        'appointment_id' => $appointmentId,
+        'notes' => $notes
+    ]);
+}
+// edit delete showall
+public function updateNote(Request $request, $noteId)
+    {
+        $request->validate([
+            'notes' => 'required|string'
+        ]);
+
+        $manager = Auth::guard('manager')->user();
+        $assistant = Auth::guard('assistant')->user();
+if (!$manager && !$assistant) {
+        return response()->json(['message' => 'Unauthorized'], 401);
+    }
+        
+        $note = AppointmentNote::findOrFail($noteId);
+        $appointment = Appointment::findOrFail($note->appointment_id);
+
+         // تحديد المدير المالك للموعد
+    $ownerManager = $appointment->manager;
+
+    if ($assistant) {
+        // تحقق أن المساعد تابع للمدير
+        if ($assistant->manager_id !== $ownerManager->id) {
+            return response()->json(['message' => 'Unauthorized assistant'], 403);
+        }
+
+        // تحقق الصلاحية (مثلاً 'add_notes')
+        $permission = Permission::where('name', 'edit_notes')->first();
+        if (!$permission || !$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+    } else {
+        // تحقق أن المدير هو مالك الموعد
+        if ($manager->id !== $ownerManager->id) {
+            return response()->json(['message' => 'Unauthorized manager'], 403);
+        }
+    }
+
+      $note->update([
+        'author_type'    => $manager ? get_class($manager) : get_class($assistant),
+        'author_id'      => $manager ? $manager->id : $assistant->id,
+        'notes'         => $request->notes,
+      ]);
+            // سجل النشاط
+          if ($assistant) {
+       AssistantActivity::create([
+    'assistant_id'    => $assistant->id,
+    'permission_id'   => $permission->id,
+    'related_to_type' => Appointment::class,          // أو AppointmentRequest::class
+    'related_to_id'   => $appointment->id,
+    'executed_at'     => now(),
+]);
+    }
+       
+
+        return response()->json(['message' => 'Note updated successfully', 'note' => $note]);
+    }
+
+    /**
+     * حذف ملاحظة
+     */
+    public function deleteNote($noteId)
+    {
+        $manager = Auth::guard('manager')->user();
+        $assistant = Auth::guard('assistant')->user();
+
+        if (!$manager && !$assistant) {
+        return response()->json(['message' => 'Unauthorized'], 401);
+    }
+        $note = AppointmentNote::findOrFail($noteId);
+        $appointment = Appointment::findOrFail($note->appointment_id);
+
+         // تحديد المدير المالك للموعد
+    $ownerManager = $appointment->manager;
+
+    if ($assistant) {
+        // تحقق أن المساعد تابع للمدير
+        if ($assistant->manager_id !== $ownerManager->id) {
+            return response()->json(['message' => 'Unauthorized assistant'], 403);
+        }
+
+        // تحقق الصلاحية (مثلاً 'add_notes')
+        $permission = Permission::where('name', 'delete_notes')->first();
+        if (!$permission || !$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+    } else {
+        // تحقق أن المدير هو مالك الموعد
+        if ($manager->id !== $ownerManager->id) {
+            return response()->json(['message' => 'Unauthorized manager'], 403);
+        }
+    }
+
+    $note->delete();
+
+    if($assistant){
+            AssistantActivity::create([
+                'assistant_id' => $assistant->id,
+                'permission_id' => $permission->id,
+                'related_to_type' => Appointment::class,
+                'related_to_id' => $appointment->id,
+                'executed_at' => Carbon::now()
+            ]);
+      
+        }
+      
+
+        return response()->json(['message' => 'Note deleted successfully']);
+    }
+
+    /**
+     * جلب كل الملاحظات لكل المواعيد
+     */
+    // public function getAllNotes()
+    // {
+    //     $manager = Auth::guard('manager')->user();
+    //     $assistant = Auth::guard('assistant')->user();
+
+    //     if (!$manager && !$assistant) {
+    //         return response()->json(['message' => 'Unauthorized'], 401);
+    //     }
+
+    //     $managerId = null;
+
+    //     if ($assistant) {
+    //         $linkedManager = $assistant->manager;
+    //         if (!$linkedManager) {
+    //             return response()->json(['message' => 'No linked manager'], 400);
+    //         }
+
+           
+
+    //         AssistantActivity::create([
+    //             'assistant_id' => $assistant->id,
+    //             'permission_id' => $permission->id,
+    //             'related_to_type' => 'all_notes',
+    //             'related_to_id' => null,
+    //             'executed_at' => Carbon::now()
+    //         ]);
+
+    //         $managerId = $linkedManager->id;
+    //     } else {
+    //         $managerId = $manager->id;
+    //     }
+
+    //     $notes = AppointmentNote::whereHas('appointment', function ($q) use ($managerId) {
+    //         $q->where('manager_id', $managerId);
+    //     })
+    //         ->with('author')
+    //         ->latest()
+    //         ->get();
+
+    //     return response()->json(['notes' => $notes]);
+    // }
+
 }

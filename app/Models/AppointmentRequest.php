@@ -38,5 +38,9 @@ public function appointmentRequest()
     return $this->belongsTo(AppointmentRequest::class, 'appointment_request_id');
 }
 
+ public function assistantActivities()
+    {
+        return $this->morphMany(AssistantActivity::class, 'relatedTo');
+    }
 
 }
