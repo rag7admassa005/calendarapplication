@@ -43,4 +43,11 @@ public function assistantActivities()
     {
         return $this->morphMany(AssistantActivity::class, 'relatedTo');
     }
+
+// المراجِع (مدير أو مساعد) - morph
+    public function reviewedBy()
+    {
+        return $this->morphTo();
+    }
+
 }

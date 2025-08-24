@@ -14,9 +14,12 @@ use Illuminate\Foundation\Auth\User;
 use App\Mail\AppointmentCancelledMail;
 use App\Mail\InvitationResponsedMail;
 use App\Models\Appointment;
+use App\Models\AppointmentRequestParticipant;
 use App\Models\Invitation;
 use App\Models\Manager;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schedule as FacadesSchedule;
 
 class UserController extends Controller
 { 
@@ -249,7 +252,7 @@ public function requestAppointment(Request $request)
         Mail::to($manager->email)->send(new \App\Mail\AppointmentRequestedMail($user, $appointment));
     }
 
-    return response()->json(['message' => 'Appointment rescheduled successfully and is now pending.'], 200);
+    return response()->json(['message' => 'Appointment rescheduled successfully and is now pending.',$appointment], 200);
 }
 
 public function cancelAppointment(Request $request, $id)
@@ -334,211 +337,248 @@ public function myInvitations()
 }
 
 
-    public function respondToInvitation(Request $request, $id)
-    {
-        $user = Auth::guard('api')->user();
-
-        $invitation = Invitation::where('id', $id)
-            ->where('invited_user_id', $user->id)
-            ->where('status', 'pending')
-            ->first();
-
-        if (!$invitation) {
-            return response()->json(['message' => 'Invitation not found or already responded to.'], 404);
-        }
-
-        // التأكد من أن الدعوة خاصة بموعد
-        if ($invitation->related_to_type !== 'App\\Models\\Appointment') {
-            return response()->json(['message' => 'Invalid invitation type.'], 400);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'response' => 'required|in:accepted,rejected',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        // الحصول على الموعد المرتبط
-        $appointment = Appointment::find($invitation->related_to_id);
-        if (!$appointment) {
-            return response()->json(['message' => 'Related appointment not found.'], 404);
-        }
-
-        // التحقق من أن الموعد لم يبدأ بعد
-        $appointmentDateTime = Carbon::parse("{$appointment->start_time}");
-        if (now()->gt($appointmentDateTime)) {
-            return response()->json(['message' => 'You cannot respond to an invitation for an appointment that has already started or passed.'], 403);
-        }
-
-        // تحديث حالة الدعوة
-        $invitation->update([
-            'status' => $request->response,
-            'responded_at' => now(),
-        ]);
-
-        // في حالة القبول، إضافة المستخدم للموعد
-        if ($request->response === 'accepted') {
-            // التحقق من عدم وجود المستخدم مسبقاً
-            $existingUser = DB::table('appointment_user')
-                ->where('appointment_id', $appointment->id)
-                ->where('user_id', $user->id)
-                ->first();
-
-            if (!$existingUser) {
-                DB::table('appointment_user')->insert([
-                    'appointment_id' => $appointment->id,
-                    'user_id' => $user->id,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-            }
-        }
-
-        // إرسال إشعار للمرسل
-        if ($invitation->invited_by_type && $invitation->invited_by_id) {
-            $sender = $invitation->invited_by_type::find($invitation->invited_by_id);
-            if ($sender && $sender->email) {
-                Mail::to($sender->email)->send(new \App\Mail\InvitationResponsedMail($user, $invitation, $appointment));
-            }
-        }
-
-        $responseMessage = $request->response === 'accepted' 
-            ? 'Invitation accepted successfully.' 
-            : 'Invitation rejected successfully.';
-
-        return response()->json(['message' => $responseMessage], 200);
-    }
-    public function AllUsers (Request $request)
+public function respondToInvitation(Request $request, $id)
 {
     $user = Auth::guard('api')->user();
+
+    // التحقق من وجود الدعوة
+    $invitation = Invitation::where('id', $id)
+        ->where('invited_user_id', $user->id)
+        ->where('status', 'pending')
+        ->first();
+
+    if (!$invitation) {
+        return response()->json([
+            'message' => 'Invitation not found or already responded to.'
+        ], 404);
+    }
+
+    // التحقق من المدخلات
+    $validator = Validator::make($request->all(), [
+        'response' => 'required|in:accepted,rejected',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'errors' => $validator->errors()
+        ], 422);
+    }
+
+    // تحديث حالة الدعوة
+    $invitation->update([
+        'status' => $request->response,
+        'responded_at' => now(),
+    ]);
+
+    // إشعار المرسل (اختياري إذا بدك تبقيه)
+    if ($invitation->invited_by_type && $invitation->invited_by_id) {
+        $sender = $invitation->invited_by_type::find($invitation->invited_by_id);
+        if ($sender && $sender->email) {
+            Mail::to($sender->email)->send(
+                new \App\Mail\InvitationResponsedMail($user, $invitation)
+            );
+        }
+    }
+
+    $responseMessage = $request->response === 'accepted'
+        ? 'Invitation accepted successfully.'
+        : 'Invitation rejected successfully.';
+
+    return response()->json([
+        'message' => $responseMessage,
+        'invitation' => $invitation
+    ], 200);
+}
+
+public function allUsers(Request $request)
+{
+    $user = Auth::guard('api')->user();
+
+    if (!$user || !$user->manager_id) {
+        return response()->json([
+            'message' => 'User or manager not found.'
+        ], 404);
+    }
 
     // جلب المستخدمين المرتبطين بنفس المدير (عدا المستخدم الحالي)
     $colleagues = User::where('manager_id', $user->manager_id)
-        ->where('id', '!=', $user->id)
-        ->select('id', 'first_name', 'last_name', 'email')
-        ->get();
+        ->where('id', '!=', $user->id);
+
+    // فلترة حسب الـ job_id إذا تم تمريره
+    if ($request->filled('job_id')) {
+        $colleagues->where('job_id', $request->job_id);
+    }
+
+    $users = $colleagues->get();
 
     return response()->json([
-        'success' => true,
-        'data' => $colleagues
-    ]);
+        'users' => $users
+    ], 200);
 }
 
-public function requestGroupAppointment(Request $request)
+public function createAppointmentRequest(Request $request)
 {
-    $user = Auth::guard('api')->user();
-
     $validator = Validator::make($request->all(), [
-        'preferred_date' => 'required|date|after_or_equal:today',
-        'preferred_start_time' => 'required|date_format:H:i',
-        'preferred_end_time' => 'required|date_format:H:i|after:preferred_start_time',
-        'preferred_duration' => 'required|integer|in:30,60',
-        'reason' => 'nullable|string|max:1000',
-        'invited_users' => 'required|array|min:1',
-        'invited_users.*' => 'required|exists:users,id|different:' . $user->id,
+        'manager_id' => 'required|exists:managers,id',
+        'preferred_date' => 'required|date',
+        'preferred_start_time' => 'required',
+        'reason' => 'nullable|string',
+        'participants' => 'array', // ids of users
+        'participants.*' => 'exists:users,id',
     ]);
 
     if ($validator->fails()) {
         return response()->json(['errors' => $validator->errors()], 422);
     }
 
-    $manager_id = $user->manager_id;
-    $date = $request->preferred_date;
-    $start_time = $request->preferred_start_time;
-    $end_time = $request->preferred_end_time;
-    $duration = $request->preferred_duration;
-    $day = strtolower(Carbon::parse($date)->format('l'));
+    $user = Auth::guard('api')->user();
 
-    // 1. التحقق من أن الوقت ضمن الجدول المتاح
-    $schedule = Schedule::where('manager_id', $manager_id)
-        ->where('day_of_week', $day)
-        ->where('is_available', true)
-        ->where('start_time', '<=', $start_time)
-        ->where('end_time', '>=', $end_time)
-        ->first();
-
-    if (!$schedule) {
-        return response()->json(['message' => 'المدير غير متاح في الوقت المطلوب.'], 400);
+    if (!$user) {
+        return response()->json(['message' => 'Unauthenticated'], 401);
     }
 
-    // 2. التحقق من التعارض مع مواعيد مقبولة
-    $conflict = AppointmentRequest::where('manager_id', $manager_id)
-        ->where('preferred_date', $date)
-        ->where('status', 'accepted')
-        ->where(function ($query) use ($start_time, $end_time) {
-            $query->whereBetween('preferred_start_time', [$start_time, $end_time])
-                ->orWhereBetween('preferred_end_time', [$start_time, $end_time])
-                ->orWhere(function ($q) use ($start_time, $end_time) {
-                    $q->where('preferred_start_time', '<', $start_time)
-                      ->where('preferred_end_time', '>', $end_time);
-                });
+    $managerId = $request->manager_id;
+    $date = $request->preferred_date;
+    $time = $request->preferred_start_time;
+
+    // ✅ تحقق من أن الوقت موجود في جدول مواعيد المدير
+   $available = Schedule::where('manager_id', $managerId)
+        ->where(function ($q) use ($date) {
+            $q->where('date', $date) // إما تاريخ محدد
+              ->orWhere('day_of_week', \Carbon\Carbon::parse($date)->dayOfWeek); // أو يوم الأسبوع
         })
+        ->where('is_available', true)
+        ->where('start_time', '<=', $time)
+        ->where('end_time', '>', $time)
+        ->first();
+
+    if (!$available) {
+        return response()->json(['message' => 'The manager is not available at this time.'], 422);
+    }
+
+    // ✅ تحقق أنو ما في موعد بنفس الوقت
+    $conflict = Appointment::where('manager_id', $managerId)
+        ->where('date', $date)
+        ->where('start_time', $time)
         ->exists();
 
     if ($conflict) {
-        return response()->json(['message' => 'يوجد تعارض مع موعد آخر مقبول.'], 409);
+        return response()->json(['message' => 'This time slot is already booked.'], 422);
     }
 
-    try {
-        DB::beginTransaction();
+    // 1- إنشاء الطلب
+    $appointmentRequest = AppointmentRequest::create([
+        'user_id' => $user->id,
+        'manager_id' => $managerId,
+        'preferred_date' => $date,
+        'preferred_start_time' => $time,
+        'preferred_end_time' => $available->end_time,
+        'preferred_duration' => $available->meeting_duration_1,
+        'reason' => $request->reason,
+        'status' => 'pending',
+        'requested_at' => now(),
+    ]);
 
-        // 3. إنشاء الطلب
-        $appointmentRequest = AppointmentRequest::create([
-            'user_id' => $user->id,
-            'manager_id' => $manager_id,
-            'preferred_date' => $date,
-            'preferred_start_time' => $start_time,
-            'preferred_end_time' => $end_time,
-            'preferred_duration' => $duration,
-            'reason' => $request->reason,
-            'status' => 'pending',
-            'requested_at' => now(),
-        ]);
-
-        // 4. حفظ المدعوين بصيغة JSON (يمكن لاحقًا تحويلها إلى جدول Pivot)
-        $appointmentRequest->update([
-            'invited_users_data' => json_encode($request->invited_users)
-        ]);
-
-        // 5. إرسال إشعار للمدير
-        $manager = Manager::find($manager_id);
-        if ($manager && $manager->email) {
-            Mail::to($manager->email)->send(
-                new \App\Mail\GroupAppointmentRequestedMail($appointmentRequest, $user)
-            );
+    // 2- إضافة المشاركين إذا موجودين
+    if ($request->has('participants')) {
+        foreach ($request->participants as $participantId) {
+            AppointmentRequestParticipant::create([
+                'appointment_request_id' => $appointmentRequest->id,
+                'user_id' => $participantId,
+                'status' => 'pending',
+            ]);
         }
-
-        DB::commit();
-
-        return response()->json([
-            'message' => 'تم إرسال طلب الموعد الجماعي بنجاح.',
-            'appointment' => $appointmentRequest
-        ], 201);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'message' => 'حدث خطأ أثناء إرسال الطلب',
-            'error' => $e->getMessage()
-        ], 500);
     }
+
+    return response()->json([
+        'message' => 'Appointment request created successfully',
+        'data' => $appointmentRequest->load('participants.user'),
+    ], 201);
 }
 
-public function AllAppointments()
+
+public function respondToRequest(Request $request, $appointmentRequestId)
+{
+    $validator=Validator::make($request->all(),[
+        'status' => 'required|in:accepted,rejected',
+    ]);
+
+       if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+   
+$user = Auth::guard('api')->user();
+
+if (!$user) {
+    return response()->json(['message' => 'Unauthenticated'], 401);
+}
+
+    // جلب السجل من جدول المشاركين
+    $participant = AppointmentRequestParticipant::where('appointment_request_id', $appointmentRequestId)
+        ->where('user_id', $user->id)
+        ->first();
+
+    if (!$participant) {
+        return response()->json(['message' => 'You are not a participant in this request'], 403);
+    }
+
+    // تحديث الحالة
+    $participant->update([
+        'status' => $request->status,
+    ]);
+
+    return response()->json([
+        'message' => 'Response submitted successfully',
+        'data' => $participant->load('user', 'appointmentRequest'),
+    ]);
+}
+
+
+public function getMyIncomingRequests()
 {
     $user = Auth::guard('api')->user();
 
-    $appointments = AppointmentRequest::where('user_id', $user->id)
-        ->select('preferred_date', 'preferred_start_time', 'preferred_end_time', 'status', 'reason')
-        ->orderBy('preferred_date', 'desc')
-        ->get();
+    if (!$user) {
+        return response()->json(['message' => 'Unauthenticated'], 401);
+    }
+
+    $participants = AppointmentRequestParticipant::with([
+        'appointmentRequest.user:id,first_name,last_name,email', // صاحب الطلب (من جدول users)
+        'appointmentRequest.manager:id,name',                   // المدير (من جدول managers)
+    ])
+    ->where('user_id', $user->id)
+    ->get();
+
+    if ($participants->isEmpty()) {
+        return response()->json(['message' => 'No appointment requests found']);
+    }
 
     return response()->json([
-        'appointments' => $appointments
+        'requests' => $participants->map(function ($p) {
+            $fromUser = $p->appointmentRequest->user;
+            $toManager = $p->appointmentRequest->manager;
+
+            return [
+                'appointment_request_id' => $p->appointment_request_id,
+                'from_user' => [
+                    'id' => $fromUser->id,
+                    'full_name' => trim($fromUser->first_name . ' ' . $fromUser->last_name),
+                    'email' => $fromUser->email,
+                ],
+                'to_manager' => [
+                    'id' => $toManager->id,
+                    'name' => $toManager->name,
+                ],
+                'status' => $p->status,
+                'created_at' => $p->appointmentRequest->created_at,
+            ];
+        })
     ]);
 }
+
+
+
+
 
 
 }

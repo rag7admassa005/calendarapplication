@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\AssistantPermissionsAssignedMail;
 use App\Mail\AssistantPermissionsUpdatedMail;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 
 class AssistantController extends Controller
@@ -152,19 +153,25 @@ class AssistantController extends Controller
     }
 
     public function getMyAssistants()
-    {
-        $managerId = auth()->guard('manager')->id();
+{
+    $managerId = auth()->guard('manager')->id();
 
-        if (!$managerId) {
-            return response()->json([
-                'message' => 'This manager is not found'
-            ], 401);
-        }
-
-        $assistants = Assistant::where('manager_id', $managerId)->get();
-
-        return response()->json($assistants);
+    if (!$managerId) {
+        return response()->json([
+            'message' => 'This manager is not found'
+        ], 401);
     }
+
+    $assistants = Assistant::with(['user', 'permissions'])
+        ->where('manager_id', $managerId)
+        ->get();
+
+    return response()->json([
+        'message' => 'Assistants with their user info and permissions',
+        'assistants' => $assistants
+    ], 200);
+}
+
 
     public function deleteMyAssistant($id)
     {
@@ -309,4 +316,44 @@ class AssistantController extends Controller
             'removed_permissions' => $validated['permissions']
         ]);
     }
+public function getMyProfile()
+{
+    $assistant = Auth::guard('assistant')->user();
+
+    if (!$assistant) {
+        return response()->json(['message' => 'Unauthorized'], 401);
+    }
+
+    $assistant = Assistant::with('user', 'permissions')
+        ->where('id', $assistant->id)
+        ->first();
+
+    if (!$assistant) {
+        return response()->json(['message' => 'Assistant not found'], 404);
+    }
+
+    return response()->json([
+        'message' => 'Assistant profile',
+        'user' => [
+            'id' => $assistant->user->id,
+            'first_name' => $assistant->user->first_name,
+            'last_name' => $assistant->user->last_name,
+            'email' => $assistant->user->email,
+            'phone_number' => $assistant->user->phone_number,
+            'image' => $assistant->user->image,
+            'address' => $assistant->user->address,
+            'date_of_birth' => $assistant->user->date_of_birth,
+            'section_id' => $assistant->user->section_id,
+            'manager_id' => $assistant->manager_id,
+            'job_id' => $assistant->user->job_id,
+            'created_at' => $assistant->user->created_at,
+            'updated_at' => $assistant->user->updated_at,
+            'role' => 'assistant',
+            'permissions' => $assistant->permissions->pluck('name'),
+        ]
+    ], 200);
+}
+
+
+
 }

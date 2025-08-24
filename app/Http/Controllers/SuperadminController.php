@@ -37,6 +37,7 @@ public function adminLogin(Request $request)
     $superAdmin = User::where('email', $email)->first();
     if ($superAdmin && $superAdmin->email === 'admin@example.com' && Hash::check($password, $superAdmin->password)) {
         $token = JWTAuth::fromUser($superAdmin);
+
         $superAdmin->role = 'super_admin';
         $superAdmin->token = $token;
 
@@ -59,6 +60,7 @@ public function adminLogin(Request $request)
         if (Hash::check($password, $manager->password)) {
             $customPayload = ['guard' => 'manager'];
             $token = JWTAuth::customClaims($customPayload)->fromUser($manager);
+
             $manager->role = 'manager';
             $manager->token = $token;
 
@@ -70,24 +72,34 @@ public function adminLogin(Request $request)
     }
 
     // === 3. تحقق من المساعد ===
-    $assistant = Assistant::whereHas('user', function ($query) use ($email) {
-        $query->where('email', $email);
-    })->with('user')->first();
+ $assistant = Assistant::whereHas('user', function ($query) use ($email) {
+    $query->where('email', $email);
+})->with('user', 'permissions')->first();
 
-    if ($assistant && Hash::check($password, $assistant->user->password)) {
-        $customPayload = ['guard' => 'assistant'];
-        $token = JWTAuth::customClaims($customPayload)->fromUser($assistant);
-        $assistant->user->role = 'assistant';
-        $assistant->user->token = $token;
+if ($assistant && Hash::check($password, $assistant->user->password)) {
+    // التوكن يطلع من الـ Assistant نفسه (حتى الحارس assistant يتعرف عليه)
+    $customPayload = ['guard' => 'assistant'];
+    $token = JWTAuth::customClaims($customPayload)->fromUser($assistant);
 
-        return response()->json([
-            'message' => 'Login successful',
-            'user' => $assistant->user
-        ]);
-    }
+    // جبنا الـ User المرتبط بالمساعد
+    $user = $assistant->user;
+
+    // أضفنا role + permissions + token
+    $user->role = 'assistant';
+    $user->permissions = $assistant->permissions->pluck('name');
+    $user->token = $token;
+
+    return response()->json([
+        'message' => 'Login successful',
+        'user' => $user
+    ], 200);
+}
+
+
 
     return response()->json(['message' => 'Invalid credentials'], 401);
 }
+
 
  public function listSectionsManager()
 {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Appointment;
 use App\Models\Manager;
 use App\Models\Permission;
 use App\Models\Schedule;
@@ -444,6 +445,11 @@ public function viewManagerSchedule()
             ->where('end_time', $schedule->end_time)
             ->count();
 
+        // جلب المواعيد المحجوزة لهاليوم
+        $appointments = Appointment::where('manager_id', $managerId)
+            ->whereDate('date', $date)
+            ->get();
+
         $timeSlots = [];
         if ($schedule->is_available) {
             while ($start->lt($end)) {
@@ -452,10 +458,21 @@ public function viewManagerSchedule()
 
                 if ($start->copy()->addMinutes($duration)->gt($end)) break;
 
-                $timeSlots[] = [
-                    'from' => $slotStart,
-                    'to' => $slotEnd,
-                ];
+                // تحقق إذا الوقت محجوز
+                $isBooked = $appointments->contains(function ($appointment) use ($slotStart, $slotEnd) {
+                    return (
+                        ($appointment->start_time <= $slotStart && $appointment->end_time > $slotStart) || // يبدأ قبل وينتهي بعد بداية slot
+                        ($appointment->start_time < $slotEnd && $appointment->end_time >= $slotEnd)   || // يتقاطع مع نهاية slot
+                        ($appointment->start_time >= $slotStart && $appointment->end_time <= $slotEnd) // يقع كلياً ضمن slot
+                    );
+                });
+
+                if (!$isBooked) {
+                    $timeSlots[] = [
+                        'from' => $slotStart,
+                        'to' => $slotEnd,
+                    ];
+                }
 
                 $start->addMinutes($duration);
             }
@@ -489,6 +506,7 @@ public function viewManagerSchedule()
 
     return response()->json($result, 200);
 }
+
 
 
 

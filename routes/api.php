@@ -40,6 +40,8 @@ Route::post('/manager/set-password', [ManagerController::class, 'setManagerPassw
 Route::post('/manager/verify-code', [ManagerController::class, 'resendVerificationCode']);
 Route::get('/manager/set-users', [ManagerController::class, 'getAvailableUsers']);
 Route::post('/manager/assignuser', [ManagerController::class, 'assignUserToManager']);
+Route::get('/getper', [ManagerController::class, 'getPremissions']);
+Route::get('/get/assistant/profile/{assistantID}', [ManagerController::class, 'getAssistantProfile']);
 
 
 // -------------------- Job Routes --------------------
@@ -66,31 +68,38 @@ Route::middleware('auth:api')->post('/appointments/{id}/reschedule', [UserContro
 Route::middleware('auth:api')->get('/my-invitations', [UserController::class, 'myInvitations']);
 Route::post('/invitations/{id}/respond', [UserController::class, 'respondToInvitation']);
 Route::post('/invitations/{id}/cancel-response', [UserController::class, 'cancelInvitationResponse']);
-Route::middleware('auth:api')->post('/group-appointments/request', [UserController::class, 'requestGroupAppointment']);
+Route::middleware('auth:api')->post('/group-appointments/request', [UserController::class, 'createAppointmentRequest']);
 Route::middleware('auth:api')->get('/users', [UserController::class, 'AllUsers']);
 Route::middleware('auth:api')->get('/my-appointments', [UserController::class, 'AllAppointments']);
+Route::middleware('auth:api')->post('/appointment-requests/{id}/respond',[UserController::class, 'respondToRequest']);
+Route::middleware('auth:api')->get('/my-incoming-requests', [UserController::class, 'getMyIncomingRequests']);
+
+
 
 // راوتات المدير لإدارة الجدول الزمني
 Route::middleware('manager')->group(function () {
     Route::post('/add/schedule', [ScheduleController::class, 'addSchedule']);
     Route::post('/update/schedule/{id}', [ScheduleController::class, 'updateSchedule']);
     Route::get('/show/manager/schedule', [ScheduleController::class, 'viewManagerSchedule']);
+   
+    
 });
 
-Route::middleware(['manager_or_assistant'])->group(function () {
+// Route::middleware(['manager_or_assistant'])->group(function () {
     Route::get('show/requests', [ManageAppointmentController::class, 'showAppointmentRequests']);
+     Route::get('show/appointments', [ManageAppointmentController::class, 'showAppointments']);
     Route::post('appointments/approve/{request_id}', [ManageAppointmentController::class, 'approveAppointmentRequest']);
     Route::post('appointments/reschedule/{id}', [ManageAppointmentController::class, 'rescheduleAppointmentRequest']);
     Route::post('/appointments/cancel/{id}', [ManageAppointmentController::class, 'cancelAppointmentRequest']);
     Route::get('/manager/users', [ManageAppointmentController::class,'getUsers']);
-    Route::post('/manager/appointments/invite-existing', [ManageAppointmentController::class, 'inviteUserToAppointment']);
+    Route::post('/manager/appointments/invite-existing', [ManageAppointmentController::class, 'inviteUsers']);
     Route::get('/manager/invitations', [ManageAppointmentController::class, 'getSentInvitations']);
     Route::post('/manager/appointment-notes', [ManageAppointmentController::class, 'addNote']);
     Route::get('/manager/appointment-notes/{appointmentId}', [ManageAppointmentController::class, 'getNotes']);
     Route::post('editnote/{noteId}', [ManageAppointmentController::class, 'updateNote']);
     Route::post('deletenote/{noteId}', [ManageAppointmentController::class, 'deleteNote']);
     Route::get('/getnotes', [ManageAppointmentController::class, 'getAllNotes']);
-});
+// });
 
 // -------------------- Assistant Routes  --------------------
 
@@ -102,3 +111,5 @@ Route::middleware('manager')->group(function () {
     Route::post('/remove-all-permissions', [AssistantController::class, 'removeAllPermissions']);
     Route::post('/remove-permissions', [AssistantController::class, 'removePermissions']);
 });
+
+Route::get('/get/assistant/profile', [AssistantController::class, 'getMyProfile']);

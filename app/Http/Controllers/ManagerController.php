@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ManagerInvitationMail;
+use App\Models\Assistant;
 use App\Models\Job;
 use App\Models\Manager;
+use App\Models\Permission;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -204,5 +206,67 @@ public function assignUserToManager(Request $request)
 //     ]);
 // }
 
+public function getPremissions()
+{
+    $manager = Auth::guard('manager')->user();
+
+    if (!$manager) {
+        return response()->json([
+            "message" => "Manager is not found"
+        ], 400);
+    }
+
+    $permissions = Permission::all();
+
+    if ($permissions->isEmpty()) {
+        return response()->json([
+            "message" => "No permissions are found"
+        ], 400);
+    }
+
+    return response()->json([
+        "message" => "These are all permissions",
+        "permissions" => $permissions
+    ], 200);
+}
+
+public function getAssistantProfile($assistantId)
+{
+    $manager = Auth::guard('manager')->user();
+
+    if (!$manager) {
+        return response()->json(['message' => 'Unauthorized'], 401);
+    }
+
+    $assistant = Assistant::with('user', 'permissions')
+        ->where('id', $assistantId)
+        ->where('manager_id', $manager->id) // ✅ تحقق أنو المساعد تابع لهالمدير
+        ->first();
+
+    if (!$assistant) {
+        return response()->json(['message' => 'Assistant not found or not assigned to you'], 404);
+    }
+
+    return response()->json([
+        'message' => 'Assistant profile',
+        'user' => [
+            'id' => $assistant->user->id,
+            'first_name' => $assistant->user->first_name,
+            'last_name' => $assistant->user->last_name,
+            'email' => $assistant->user->email,
+            'phone_number' => $assistant->user->phone_number,
+            'image' => $assistant->user->image,
+            'address' => $assistant->user->address,
+            'date_of_birth' => $assistant->user->date_of_birth,
+            'section_id' => $assistant->user->section_id,
+            'manager_id' => $assistant->manager_id,
+            'job_id' => $assistant->user->job_id,
+            'created_at' => $assistant->user->created_at,
+            'updated_at' => $assistant->user->updated_at,
+            'role' => 'assistant',
+            'permissions' => $assistant->permissions->pluck('name'),
+        ]
+    ], 200);
+}
 
 }

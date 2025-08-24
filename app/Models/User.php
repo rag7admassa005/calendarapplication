@@ -48,10 +48,11 @@ class User extends Authenticatable implements JWTSubject
         return $this->belongsTo(Job::class);
     }
 
-    public function appointmentRequests(): HasMany
-    {
-        return $this->hasMany(AppointmentRequest::class);
-    }
+public function appointmentRequests()
+{
+    return $this->hasMany(AppointmentRequest::class);
+}
+
 
     public function appointments(): BelongsToMany
     {
@@ -89,4 +90,11 @@ class User extends Authenticatable implements JWTSubject
             }
         });
     }
+
+        // مشاركته كـ invited بالطلبات
+public function participations()
+{
+    return $this->hasMany(AppointmentRequestParticipant::class, 'user_id');
+}
+
 }
