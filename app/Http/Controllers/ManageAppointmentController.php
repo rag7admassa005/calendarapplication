@@ -527,6 +527,97 @@ $participantsForResponse = collect([
         ]
     ]);
 }
+      public function cancelAppointmentRequest($id)
+{
+    $manager = Auth::guard('manager')->user();
+    $assistant = Auth::guard('assistant')->user();
+
+    // التحقق من الجهة المنفذة
+    if (!$manager && !$assistant) {
+        return response(['message' => 'Unauthorized'], 401);
+    }
+
+    $requestApp = AppointmentRequest::findOrFail($id);
+
+    // جلب المدير المسؤول عن الطلب
+    $ownerManager = Manager::find($requestApp->manager_id);
+    if (!$ownerManager) {
+        return response()->json(['message' => 'Manager not found'], 404);
+    }
+
+    // تحقق من صلاحية المساعد
+    if ($assistant) {
+        if ($assistant->manager_id !== $ownerManager->id) {
+            return response()->json(['message' => 'Unauthorized assistant'], 403);
+        }
+
+        $permission = Permission::where('name', 'reject_appointment')->first();
+        if (!$permission || !$assistant->permissions->contains($permission->id)) {
+            return response()->json(['message' => 'Permission denied'], 403);
+        }
+    }
+
+    // لا تسمح بالرفض المتكرر
+    if ($requestApp->status === 'rejected') {
+        return response()->json(['message' => 'This appointment request has already been rejected.'], 400);
+    }
+
+    // المستخدمين يلي وافقوا على الحضور
+    $acceptedUsers = Invitation::where('related_to_type', get_class($requestApp))
+        ->where('related_to_id', $requestApp->id)
+        ->where('status', 'accepted')
+        ->pluck('invited_user_id')
+        ->toArray();
+
+    // تحديث حالة الطلب
+    $reviewedBy = $manager ?: $assistant;
+    $requestApp->update([
+        'status' => 'rejected',
+        'reviewed_by_type' => get_class($reviewedBy),
+        'reviewed_by_id' => $reviewedBy->id,
+    ]);
+
+    // إشعار من أنشأ الطلب
+    $requestApp->user->notify(new AppointmentRejected());
+
+    // إشعار المستخدمين المدعوين يلي وافقوا
+    $invitedUsers = \App\Models\User::whereIn('id', $acceptedUsers)->get();
+    foreach ($invitedUsers as $user) {
+        $user->notify(new AppointmentRejected());
+    }
+
+    // حذف الموعد إذا تم إنشاؤه مسبقاً
+    $existingAppointment = Appointment::where('date', $requestApp->preferred_date)
+    ->where('start_time', $requestApp->preferred_start_time)
+    ->whereHas('users', function ($query) use ($requestApp) {
+        $query->where('users.id', $requestApp->user_id);
+    })->first();
+    
+        $existingAppointment->users()->detach(); // حذف روابط المستخدمين
+        $existingAppointment->delete(); // حذف الموعد نفسه
+    
+
+    // تسجيل النشاط للمساعد فقط
+    if ($assistant) {
+        AssistantActivity::create([
+            'assistant_id' => $assistant->id,
+            'permission_id' => $permission->id,
+            'appointment_request_id' => $requestApp->id,
+            'executed_at' => now(),
+        ]);
+    }
+
+    return response()->json([
+        'message' => 'Appointment request rejected',
+        'appointment_request' => [
+            'id' => $requestApp->id,
+            'status' => $requestApp->status,
+            'created_by' => $requestApp->user,
+            'accepted_invited_users' => $invitedUsers,
+        ]
+    ]);
+}
+
 
     // عرض جميع المستخدمين المرتبطين بهالمدير وتصفيتهم حسب العمل 
     public function getUsers(Request $request)
