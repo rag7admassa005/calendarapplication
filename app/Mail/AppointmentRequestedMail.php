@@ -23,7 +23,7 @@ class AppointmentRequestedMail extends Mailable
 
     public function build()
     {
-        return $this->subject('طلب موعد جديد من ' . $this->user->first_name)
+        return $this->subject('New Appointment Request from ' . $this->user->first_name)
                     ->view('emails.appointment_requested');
     }
 }

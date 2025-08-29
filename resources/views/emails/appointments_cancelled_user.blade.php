@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Invitation Response</title>
+    <title>Appointment Cancelled</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,7 +19,7 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         h1 {
-            color: #2d8fdd;
+            color: #e74c3c;
         }
         .details {
             margin: 20px 0;
@@ -34,15 +34,21 @@
 </head>
 <body>
     <div class="container">
-        <h1>Invitation Response ✅</h1>
+        <h1>Appointment Cancelled ❌</h1>
 
-        <p>Hello {{ $userName }},</p>
+        <p>Hello {{ $appointment->user->first_name ?? 'User' }},</p>
 
-        <p>The invitation you sent has been <strong>{{ ucfirst($response) }}</strong>.</p>
+        <p>The appointment you are a participant in <strong>{{ $appointment->preferred_date }}</strong> 
+           at <strong>{{ $appointment->preferred_start_time }}</strong> 
+           has been cancelled by <strong>{{ $cancelledBy->first_name ?? 'the user' }}</strong>.</p>
 
+        @if($reason)
         <div class="details">
-            Please check the details in your system.
+            <strong>Reason for cancellation:</strong> {{ $reason }}
         </div>
+        @endif
+
+        <p>If you have any questions, please contact the manager directly.</p>
 
         <div class="footer">
             Thanks,<br>

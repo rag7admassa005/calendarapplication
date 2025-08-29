@@ -21,7 +21,7 @@ Route::post('/forgotpassword', [AuthController::class, 'forgetPassword']);
 Route::post('/resetcode', [AuthController::class, 'confirmResetCode']);
 Route::middleware('auth:api')->get('/viewProfile', [AuthController::class, 'viewProfile']);
 Route::middleware('auth:api')->post('/updateProfile', [AuthController::class, 'updateProfile']);
-Route::middleware('auth:api')->delete('/logout', [AuthController::class, 'logout']);
+Route::middleware('auth:api')->post('/logout', [AuthController::class, 'logout']);
 
 // -------------------- Superadmin Routes --------------------
 
@@ -40,7 +40,7 @@ Route::post('/manager/set-password', [ManagerController::class, 'setManagerPassw
 Route::post('/manager/verify-code', [ManagerController::class, 'resendVerificationCode']);
 Route::get('/manager/set-users', [ManagerController::class, 'getAvailableUsers']);
 Route::post('/manager/assignuser', [ManagerController::class, 'assignUserToManager']);
-Route::get('/getper', [ManagerController::class, 'getPremissions']);
+Route::get('5', [ManagerController::class, 'getPremissions']);
 Route::get('/get/assistant/profile/{assistantID}', [ManagerController::class, 'getAssistantProfile']);
 
 
@@ -105,11 +105,14 @@ Route::middleware('manager')->group(function () {
 
 Route::middleware('manager')->group(function () {
     Route::post('/assign-assistant', [AssistantController::class, 'assignAssistant']);
-    Route::post('/assign-permissions', [AssistantController::class, 'assignPermissions']);
+    //Route::post('/assign-permissions', [AssistantController::class, 'assignPermissions']);
     Route::get('/my-assistants', [AssistantController::class, 'getMyAssistants']);
     Route::delete('/assistants/{id}', [AssistantController::class, 'deleteMyAssistant']);
+    Route::post('/update-permissions', [AssistantController::class, 'setPermissions']);
+
     Route::post('/remove-all-permissions', [AssistantController::class, 'removeAllPermissions']);
-    Route::post('/remove-permissions', [AssistantController::class, 'removePermissions']);
+    Route::get('/get/assistant/profile', [AssistantController::class, 'getAssistantActivity']);
+    //Route::post('/remove-permissions', [AssistantController::class, 'removePermissions']);
 });
 
-Route::get('/get/assistant/profile', [AssistantController::class, 'getMyProfile']);
+Route::get('/get/assistant/activity/{assistant_id}', [AssistantController::class, 'getAssistantActivity']);

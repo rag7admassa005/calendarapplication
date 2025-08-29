@@ -2,7 +2,6 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Invitation Response</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -34,15 +33,22 @@
 </head>
 <body>
     <div class="container">
-        <h1>Invitation Response ✅</h1>
+        <h1>You're Invited 📩</h1>
 
-        <p>Hello {{ $userName }},</p>
+        <p>Hello,</p>
 
-        <p>The invitation you sent has been <strong>{{ ucfirst($response) }}</strong>.</p>
+        <p>You have been invited to an appointment by <strong>{{ $manager->name }}</strong>.</p>
 
         <div class="details">
-            Please check the details in your system.
+            <strong>Title:</strong> {{ $invitation->title }} <br>
+            <strong>Description:</strong> {{ $invitation->description }} <br>
+            <strong>Date:</strong> {{ $invitation->date }} <br>
+            <strong>Time:</strong> {{ $invitation->time }} <br>
+            <strong>Duration:</strong> {{ $invitation->duration }} minutes
         </div>
+
+        <p>Please make sure to be available at the scheduled time.<br>
+        If you have any questions, feel free to contact us.</p>
 
         <div class="footer">
             Thanks,<br>

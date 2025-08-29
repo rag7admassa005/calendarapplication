@@ -20,7 +20,7 @@ class AssistantPermissionsUpdatedMail extends Mailable
 
   public function build()
 {
-    return $this->subject('تم تحديث صلاحياتك')
+    return $this->subject('Your Permissions have been updated')
                 ->view('emails.assistant_permissions_updated')
                 ->with([
                     'assistant' => $this->assistant,

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ManagerInvitationMail;
+use App\Mail\UserAssignedToManagerMail;
 use App\Models\Assistant;
 use App\Models\Job;
 use App\Models\Manager;
@@ -51,7 +52,7 @@ class ManagerController extends Controller
         return response()->json(['message' => 'Invalid verification code.'], 422);
     }
 
-    // تحديث البيانات
+ 
     $manager->update([
         'password' => bcrypt($request->new_password),
         'must_change_password' => false,
@@ -60,7 +61,7 @@ class ManagerController extends Controller
         'email_verified_at' => now(),
     ]);
 
-    // إصدار توكن JWT
+   
     $token = JWTAuth::fromUser($manager);
 
     return response()->json([
@@ -72,10 +73,11 @@ class ManagerController extends Controller
 
     public function resendVerificationCode(Request $request)
     {
-         $request->validate([
+         $validator=Validator::make($request->all(),[
         'email' => 'required|email|exists:managers,email',
     ]);
 
+   
     $manager = Manager::where('email', $request->email)->first();
 
     if (!$manager) {
@@ -89,7 +91,7 @@ class ManagerController extends Controller
         }
 
         $code = rand(100000, 999999);
-        $expiresAt = now()->addMinutes(10); // صلاحية الكود ٥ دقايق
+        $expiresAt = now()->addMinutes(10); 
 
         $manager->update([
             'verification_code' => $code,
@@ -115,7 +117,7 @@ class ManagerController extends Controller
             ], 400);
         }
     $users = User::where('section_id', $manager->section_id)
-        ->whereNull('manager_id') // لم يُربطوا بعد
+        ->whereNull('manager_id') 
         ->select('id', 'first_name', 'last_name', 'email')
         ->get()
         ->map(function ($user) use ($manager) {
@@ -161,7 +163,7 @@ public function assignUserToManager(Request $request)
     }
 
     $user->update(['manager_id' => $manager->id]);
-
+ Mail::to($user->email)->send(new UserAssignedToManagerMail($user, $manager));
     return response()->json(['message' => 'User assigned successfully.']);
 }
 
@@ -196,7 +198,7 @@ public function assignUserToManager(Request $request)
 
    
 
-//     // إصدار توكن JWT
+//     
 //     $token = JWTAuth::fromUser($manager);
 
 //     return response()->json([
@@ -240,7 +242,7 @@ public function getAssistantProfile($assistantId)
 
     $assistant = Assistant::with('user', 'permissions')
         ->where('id', $assistantId)
-        ->where('manager_id', $manager->id) // ✅ تحقق أنو المساعد تابع لهالمدير
+        ->where('manager_id', $manager->id) 
         ->first();
 
     if (!$assistant) {

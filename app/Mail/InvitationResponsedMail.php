@@ -12,7 +12,7 @@ class InvitationResponsedMail extends Mailable
     public $userName;
     public $response;
 
-    public function __construct($user, $invitation, $appointment)
+    public function __construct($user, $invitation)
     {
         $this->userName = $user->name;
         $this->response = $invitation->status;
@@ -20,10 +20,11 @@ class InvitationResponsedMail extends Mailable
 
     public function build()
     {
-        return $this->view('emails.invitation-response')
-            ->with([
-                'userName' => $this->userName,
-                'response' => $this->response,
-            ]);
+        return $this->subject('Invitation Response')
+                    ->view('emails.invitation-response')
+                    ->with([
+                        'userName' => $this->userName,
+                        'response' => $this->response,
+                    ]);
     }
 }

@@ -22,8 +22,8 @@ class ManagerInvitationMail extends Mailable
 
   public function build()
 {
-    return $this->subject('تم تعيينك كمدير - الرجاء تعيين كلمة سر')
-                ->view('emails.manager_invitation')
+    return $this->subject('You have been given an administrator account')
+                ->view('emails.manager_invitationn')
                 ->with([
                     'name' => $this->manager->first_name,
                     'code' => $this->manager->verification_code,

@@ -392,7 +392,6 @@ $conflict = Schedule::where('manager_id', $manager->id)
 }
 
 
-
 public function viewManagerSchedule()
 {
     $manager = Auth::guard('manager')->user();
@@ -425,7 +424,7 @@ public function viewManagerSchedule()
         ->orderBy('start_time')
         ->get();
 
-    $groupedByDate = [];
+    $result = [];
 
     foreach ($schedules as $schedule) {
         $date = $schedule->date;
@@ -439,7 +438,8 @@ public function viewManagerSchedule()
             continue;
         }
 
-        $repeatedCount = Schedule::where('manager_id', $managerId)
+        // حساب عدد مرات التكرار لهاليوم بنفس البداية والنهاية
+        $repeatCount = Schedule::where('manager_id', $managerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('start_time', $schedule->start_time)
             ->where('end_time', $schedule->end_time)
@@ -461,9 +461,9 @@ public function viewManagerSchedule()
                 // تحقق إذا الوقت محجوز
                 $isBooked = $appointments->contains(function ($appointment) use ($slotStart, $slotEnd) {
                     return (
-                        ($appointment->start_time <= $slotStart && $appointment->end_time > $slotStart) || // يبدأ قبل وينتهي بعد بداية slot
-                        ($appointment->start_time < $slotEnd && $appointment->end_time >= $slotEnd)   || // يتقاطع مع نهاية slot
-                        ($appointment->start_time >= $slotStart && $appointment->end_time <= $slotEnd) // يقع كلياً ضمن slot
+                        ($appointment->start_time <= $slotStart && $appointment->end_time > $slotStart) ||
+                        ($appointment->start_time < $slotEnd && $appointment->end_time >= $slotEnd) ||
+                        ($appointment->start_time >= $slotStart && $appointment->end_time <= $slotEnd)
                     );
                 });
 
@@ -483,26 +483,18 @@ public function viewManagerSchedule()
             ];
         }
 
-        if (!isset($groupedByDate[$date])) {
-            $groupedByDate[$date] = [
+       $result[] = [
                 'id' => $schedule->id,
-                'date' => $date,
-                'day_of_week' => $dayOfWeek,
-                'start_time' => $schedule->start_time,
-                'end_time' => $schedule->end_time,
-                'meeting_duration' => $schedule->is_available ? $schedule->meeting_duration_1 : null,
                 'is_available' => $schedule->is_available,
-                'repeated_count' => $repeatedCount,
-                'slots' => []
-            ];
-        }
-
-        $groupedByDate[$date]['slots'][] = [
-            'time_slots' => $timeSlots,
-        ];
+                'date'              => $date,
+                'day_of_week'       => $dayOfWeek,
+                'start_time'        => $schedule->start_time,
+                'end_time'          => $schedule->end_time,
+                'meeting_duration'  => $duration,
+                'repeated_count'       => $repeatCount,
+                'slots'             => $timeSlots,
+            ]; 
     }
-
-    $result = collect($groupedByDate)->sortBy('date')->values()->toArray();
 
     return response()->json($result, 200);
 }

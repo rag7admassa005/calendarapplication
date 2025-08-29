@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\AssistantAssignedMail;
 use App\Models\Assistant;
 use App\Models\Permission;
 use Illuminate\Foundation\Auth\User;
@@ -10,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\AssistantPermissionsAssignedMail;
 use App\Mail\AssistantPermissionsUpdatedMail;
+use App\Models\AssistantActivity;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 
@@ -68,7 +70,7 @@ class AssistantController extends Controller
             ];
 
             $permissionIds = Permission::whereIn('name', $defaultPermissions)->pluck('id');
-
+     Mail::to($user->email)->send(new AssistantAssignedMail($user, $manager));
             foreach ($permissionIds as $permissionId) {
                 DB::table('assistant_permission')->insert([
                     'assistant_id' => $assistant->id,
@@ -95,62 +97,62 @@ class AssistantController extends Controller
         }
     }
 
-    public function assignPermissions(Request $request)
-    {
-        $manager = auth('manager')->user();
+    // public function assignPermissions(Request $request)
+    // {
+    //     $manager = auth('manager')->user();
 
-        if (!$manager) {
-            return response()->json(['message' => 'Unauthorized: Manager not logged in.'], 401);
-        }
+    //     if (!$manager) {
+    //         return response()->json(['message' => 'Unauthorized: Manager not logged in.'], 401);
+    //     }
 
-        $request->validate([
-            'assistant_id' => 'required|exists:assistants,id',
-            'permissions' => 'array', 
-            'permissions.*' => 'string|exists:permissions,name',
-        ]);
+    //     $request->validate([
+    //         'assistant_id' => 'required|exists:assistants,id',
+    //         'permissions' => 'array', 
+    //         'permissions.*' => 'string|exists:permissions,name',
+    //     ]);
 
-        $assistant = Assistant::find($request->assistant_id);
+    //     $assistant = Assistant::find($request->assistant_id);
 
-        if ($assistant->manager_id !== $manager->id) {
-            return response()->json(['message' => 'This assistant does not belong to you.'], 403);
-        }
+    //     if ($assistant->manager_id !== $manager->id) {
+    //         return response()->json(['message' => 'This assistant does not belong to you.'], 403);
+    //     }
 
-        $defaultPermissions = [
-            'view_calendar',
-            'view_users',
-            'view_invitations',
-            'view_appointment_requests',
-        ];
+    //     $defaultPermissions = [
+    //         'view_calendar',
+    //         'view_users',
+    //         'view_invitations',
+    //         'view_appointment_requests',
+    //     ];
 
-        $allPermissions = array_unique(array_merge($defaultPermissions, $request->permissions ?? []));
+    //     $allPermissions = array_unique(array_merge($defaultPermissions, $request->permissions ?? []));
 
-        $permissionIds = Permission::whereIn('name', $allPermissions)->pluck('id');
+    //     $permissionIds = Permission::whereIn('name', $allPermissions)->pluck('id');
 
-        foreach ($permissionIds as $permissionId) {
-            DB::table('assistant_permission')->updateOrInsert(
-                [
-                    'assistant_id' => $assistant->id,
-                    'permission_id' => $permissionId,
-                    'manager_id' => $manager->id,
-                ],
-                [
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]
-            );
-        }
+    //     foreach ($permissionIds as $permissionId) {
+    //         DB::table('assistant_permission')->updateOrInsert(
+    //             [
+    //                 'assistant_id' => $assistant->id,
+    //                 'permission_id' => $permissionId,
+    //                 'manager_id' => $manager->id,
+    //             ],
+    //             [
+    //                 'created_at' => now(),
+    //                 'updated_at' => now(),
+    //             ]
+    //         );
+    //     }
 
-        if ($assistant->user && $assistant->user->email) {
-            Mail::to($assistant->user->email)->send(
-                new AssistantPermissionsAssignedMail($assistant, $allPermissions)
-            );
-        }
+    //     if ($assistant->user && $assistant->user->email) {
+    //         Mail::to($assistant->user->email)->send(
+    //             new AssistantPermissionsAssignedMail($assistant, $allPermissions)
+    //         );
+    //     }
         
-        return response()->json([
-            'message' => 'Permissions assigned successfully.',
-            'assigned_permissions' => $allPermissions,
-        ]);
-    }
+    //     return response()->json([
+    //         'message' => 'Permissions assigned successfully.',
+    //         'assigned_permissions' => $allPermissions,
+    //     ]);
+    // }
 
     public function getMyAssistants()
 {
@@ -258,64 +260,64 @@ class AssistantController extends Controller
             'message' => 'Custom permissions removed successfully.',
             'remaining_permissions' => $defaultPermissions
         ]);
-    }
+     }
 
-    public function removePermissions(Request $request)
-    {
-        $manager = auth('manager')->user();
+    // public function removePermissions(Request $request)
+    // {
+    //     $manager = auth('manager')->user();
 
-        if (!$manager) {
-            return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
-        }
+    //     if (!$manager) {
+    //         return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
+    //     }
 
-        $validated = $request->validate([
-            'assistant_id' => 'required|exists:assistants,id',
-            'permissions' => 'required|array',
-            'permissions.*' => 'string|exists:permissions,name',
-        ]);
+    //     $validated = $request->validate([
+    //         'assistant_id' => 'required|exists:assistants,id',
+    //         'permissions' => 'required|array',
+    //         'permissions.*' => 'string|exists:permissions,name',
+    //     ]);
 
-        $assistant = Assistant::find($validated['assistant_id']);
+    //     $assistant = Assistant::find($validated['assistant_id']);
 
-        if (!$assistant || $assistant->manager_id !== $manager->id) {
-            return response()->json(['status' => false, 'message' => 'This assistant does not belong to you.'], 403);
-        }
+    //     if (!$assistant || $assistant->manager_id !== $manager->id) {
+    //         return response()->json(['status' => false, 'message' => 'This assistant does not belong to you.'], 403);
+    //     }
 
-        $defaultPermissions = [
-            'view_calendar',
-            'view_users',
-            'view_invitations',
-            'view_appointment_requests',
-        ];
+    //     $defaultPermissions = [
+    //         'view_calendar',
+    //         'view_users',
+    //         'view_invitations',
+    //         'view_appointment_requests',
+    //     ];
 
-        $invalid = array_intersect($validated['permissions'], $defaultPermissions);
+    //     $invalid = array_intersect($validated['permissions'], $defaultPermissions);
         
-        if (!empty($invalid)) {
-            $messages = [];
-            foreach ($invalid as $permission) {
-                $messages[] = "The permission '{$permission}' is a default permission and cannot be removed.";
-            }
+    //     if (!empty($invalid)) {
+    //         $messages = [];
+    //         foreach ($invalid as $permission) {
+    //             $messages[] = "The permission '{$permission}' is a default permission and cannot be removed.";
+    //         }
 
-            return response()->json([
-                'status' => false,
-                'message' => 'Default permissions cannot be deleted.',
-                'errors' => $messages
-            ], 422);
-        }
+    //         return response()->json([
+    //             'status' => false,
+    //             'message' => 'Default permissions cannot be deleted.',
+    //             'errors' => $messages
+    //         ], 422);
+    //     }
 
-        $permissionIds = Permission::whereIn('name', $validated['permissions'])->pluck('id');
+    //     $permissionIds = Permission::whereIn('name', $validated['permissions'])->pluck('id');
 
-        DB::table('assistant_permission')
-            ->where('assistant_id', $assistant->id)
-            ->where('manager_id', $manager->id)
-            ->whereIn('permission_id', $permissionIds)
-            ->delete();
+    //     DB::table('assistant_permission')
+    //         ->where('assistant_id', $assistant->id)
+    //         ->where('manager_id', $manager->id)
+    //         ->whereIn('permission_id', $permissionIds)
+    //         ->delete();
 
-        return response()->json([
-            'status' => true,
-            'message' => 'The selected permissions have been successfully deleted',
-            'removed_permissions' => $validated['permissions']
-        ]);
-    }
+    //     return response()->json([
+    //         'status' => true,
+    //         'message' => 'The selected permissions have been successfully deleted',
+    //         'removed_permissions' => $validated['permissions']
+    //     ]);
+    // }
 public function getMyProfile()
 {
     $assistant = Auth::guard('assistant')->user();
@@ -354,6 +356,129 @@ public function getMyProfile()
     ], 200);
 }
 
+public function setPermissions(Request $request)
+{
+    $manager = auth('manager')->user();
+
+    if (!$manager) {
+        return response()->json(['message' => 'Unauthorized: Manager not logged in.'], 401);
+    }
+
+    $validated = $request->validate([
+        'assistant_id'   => 'required|exists:assistants,id',
+        'permissions'    => 'array',
+        'permissions.*'  => 'string|exists:permissions,name',
+    ]);
+
+    $assistant = Assistant::find($validated['assistant_id']);
+
+    if (!$assistant || $assistant->manager_id !== $manager->id) {
+        return response()->json(['message' => 'This assistant does not belong to you.'], 403);
+    }
+
+    // الصلاحيات الافتراضية (دائمة)
+    $defaultPermissions = [
+        'view_calendar',
+        'view_users',
+        'view_invitations',
+        'view_appointment_requests',
+    ];
+
+    // الصلاحيات اللي المدير بعتهم (غير افتراضية)
+    $newPermissions = $validated['permissions'] ?? [];
+
+    // نجيب IDs لكل الصلاحيات المطلوبة (افتراضية + المدخل الجديد)
+    $allPermissions = array_unique(array_merge($defaultPermissions, $newPermissions));
+    $permissionModels = Permission::whereIn('name', $allPermissions)->get();
+    $permissionIds = $permissionModels->pluck('id')->toArray();
+
+    // 1) نحذف كل الصلاحيات الحالية للمساعد ما عدا الافتراضية
+    DB::table('assistant_permission')
+        ->where('assistant_id', $assistant->id)
+        ->where('manager_id', $manager->id)
+        ->whereNotIn(
+            'permission_id',
+            Permission::whereIn('name', $defaultPermissions)->pluck('id')
+        )
+        ->delete();
+
+    // 2) نضيف الصلاحيات الجديدة (افتراضية + اللي بعتهم المدير)
+    foreach ($permissionIds as $permissionId) {
+        DB::table('assistant_permission')->updateOrInsert(
+            [
+                'assistant_id'  => $assistant->id,
+                'permission_id' => $permissionId,
+                'manager_id'    => $manager->id,
+            ],
+            [
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+    }
+
+    // 3) إرسال إيميل للمساعد إذا عنده حساب مربوط
+    if ($assistant->user && $assistant->user->email) {
+        Mail::to($assistant->user->email)->send(
+            new AssistantPermissionsUpdatedMail($assistant, $allPermissions)
+        );
+    }
+
+    return response()->json([
+        'message' => 'Permissions updated successfully.',
+        'assigned_permissions' => $permissionModels->map(function ($p) {
+            return [
+                'id'          => $p->id,
+                'name'        => $p->name,
+                'description' => $p->description ?? null, 
+            ];
+        }),
+    ]);
+}
+
+public function getAssistantActivity(Request $request, $assistantId)
+{
+    // التحقق من أن المدير مسجل الدخول
+    $manager = Auth::guard('manager')->user();
+    if (!$manager) {
+        return response()->json([
+            'message' => 'Unauthorized: Manager not logged in.'
+        ], 401);
+    }
+
+    // التحقق من وجود المساعد
+    $assistant = Assistant::find($assistantId);
+    if (!$assistant) {
+        return response()->json([
+            'message' => 'Assistant not found.'
+        ], 404);
+    }
+
+    // التحقق أن المساعد مرتبط بهذا المدير
+    if ($assistant->manager_id !== $manager->id) {
+        return response()->json([
+            'message' => 'This assistant does not belong to you.'
+        ], 403);
+    }
+
+    // جلب النشاطات مع التفاصيل المرتبطة
+    $activities = AssistantActivity::with([
+        'permission:id,name',
+        'relatedTo' // هنا نستخدم morphTo
+    ])
+    ->where('assistant_id', $assistantId)
+    ->orderBy('executed_at', 'desc')
+    ->get();
+
+    return response()->json([
+        'assistant' => [
+            'id' => $assistant->id,
+            'user_id' => $assistant->user_id,
+            'name' => $assistant->user->name ?? null,
+        ],
+        'activities' => $activities
+    ]);
+}
 
 
 }

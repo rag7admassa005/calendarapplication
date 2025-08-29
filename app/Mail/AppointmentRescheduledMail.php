@@ -2,26 +2,25 @@
 
 namespace App\Mail;
 
+use App\Models\Appointment;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
-class AppointmentCancelledMail extends Mailable
+class AppointmentRescheduledMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $cancelledBy;
     public $appointment;
-    public $reason;
+    public $rescheduledBy;
 
     /**
      * Create a new message instance.
      */
-    public function __construct($cancelledBy, $appointment, $reason)
+    public function __construct(Appointment $appointment, $rescheduledBy)
     {
-        $this->cancelledBy = $cancelledBy;
         $this->appointment = $appointment;
-        $this->reason = $reason;
+        $this->rescheduledBy = $rescheduledBy;
     }
 
     /**
@@ -29,12 +28,11 @@ class AppointmentCancelledMail extends Mailable
      */
     public function build()
     {
-        return $this->subject('Appointment Cancelled')
-                    ->view('emails.appointments_cancelled_user')
+        return $this->subject('Your Appointment Has Been Rescheduled')
+                    ->view('emails.appointment_rescheduled')
                     ->with([
-                        'cancelledBy' => $this->cancelledBy,
                         'appointment' => $this->appointment,
-                        'reason' => $this->reason,
+                        'rescheduledBy' => $this->rescheduledBy,
                     ]);
     }
 }

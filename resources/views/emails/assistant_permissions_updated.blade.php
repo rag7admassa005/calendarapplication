@@ -1,12 +1,12 @@
-<h2>مرحباً {{ $assistant->user->name }}،</h2>
+<h2>Hello {{ $assistant->user->name }},</h2>
 
-<p>تم تعديل صلاحياتك من قبل المدير.</p>
+<p>Your permissions have been modified by your administrator.</p>
 
-<p>الصلاحيات الجديدة:</p>
+<p>New permissions:</p>
 <ul>
-  @foreach ($permissions as $permission)
-    <li>{{ $permission }}</li>
-  @endforeach
+@foreach ($permissions as $permission)
+<li>{{ $permission }}</li>
+@endforeach
 </ul>
 
-<p>يرجى مراجعة لوحة التحكم الخاصة بك لمزيد من التفاصيل.</p>
+<p>Please check your control panel for more details.</p>

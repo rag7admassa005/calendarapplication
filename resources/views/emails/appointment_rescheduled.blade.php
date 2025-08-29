@@ -2,7 +2,6 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Invitation Response</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,7 +18,7 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         h1 {
-            color: #2d8fdd;
+            color: #f39c12;
         }
         .details {
             margin: 20px 0;
@@ -34,15 +33,18 @@
 </head>
 <body>
     <div class="container">
-        <h1>Invitation Response ✅</h1>
+        <h1>Appointment Rescheduled 🔄</h1>
 
-        <p>Hello {{ $userName }},</p>
-
-        <p>The invitation you sent has been <strong>{{ ucfirst($response) }}</strong>.</p>
+        <p>Hello </p>
 
         <div class="details">
-            Please check the details in your system.
+            Your appointment has been rescheduled by the manager.  
+            The new time is:  
+            <strong>{{ $appointment->date }} at {{ $appointment->start_time }}</strong>.
         </div>
+
+        <p>Please confirm your availability for this new time.<br>
+        If you have any questions, feel free to contact us.</p>
 
         <div class="footer">
             Thanks,<br>

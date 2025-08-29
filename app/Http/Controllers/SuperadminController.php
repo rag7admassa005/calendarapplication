@@ -18,164 +18,163 @@ use Illuminate\Support\Str;
 
 class SuperadminController extends Controller
 {
-//   
-public function adminLogin(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'email' => 'required|email',
-        'password' => 'required|string|min:6',
-    ]);
-
-    if ($validator->fails()) {
-        return response(['errors' => $validator->errors()], 422);
-    }
-
-    $email = $request->email;
-    $password = $request->password;
-
-    // === 1. تحقق من السوبر أدمن ===
-    $superAdmin = User::where('email', $email)->first();
-    if ($superAdmin && $superAdmin->email === 'admin@example.com' && Hash::check($password, $superAdmin->password)) {
-        $token = JWTAuth::fromUser($superAdmin);
-
-        $superAdmin->role = 'super_admin';
-        $superAdmin->token = $token;
-
-        return response()->json([
-            'message' => 'Login successful',
-            'user' => $superAdmin
+    //   
+    public function adminLogin(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'password' => 'required|string|min:6',
         ]);
-    }
 
-    // === 2. تحقق من المدير ===
-    $manager = Manager::where('email', $email)->first();
-    if ($manager) {
-        if ($manager->must_change_password) {
-            return response()->json([
-                'message' => 'You haven’t changed your password yet!',
-                'status' => 'must_change_password'
-            ], 403);
+        if ($validator->fails()) {
+            return response(['errors' => $validator->errors()], 422);
         }
 
-        if (Hash::check($password, $manager->password)) {
-            $customPayload = ['guard' => 'manager'];
-            $token = JWTAuth::customClaims($customPayload)->fromUser($manager);
+        $email = $request->email;
+        $password = $request->password;
 
-            $manager->role = 'manager';
-            $manager->token = $token;
+
+        $superAdmin = User::where('email', $email)->first();
+        if ($superAdmin && $superAdmin->email === 'admin@example.com' && Hash::check($password, $superAdmin->password)) {
+            $token = JWTAuth::fromUser($superAdmin);
+
+            $superAdmin->role = 'super_admin';
+            $superAdmin->token = $token;
 
             return response()->json([
                 'message' => 'Login successful',
-                'user' => $manager
+                'user' => $superAdmin
             ]);
         }
+
+
+        $manager = Manager::where('email', $email)->first();
+        if ($manager) {
+            if ($manager->must_change_password) {
+                return response()->json([
+                    'message' => 'You haven’t changed your password yet!',
+                    'status' => 'must_change_password'
+                ], 403);
+            }
+
+            if (Hash::check($password, $manager->password)) {
+                $customPayload = ['guard' => 'manager'];
+                $token = JWTAuth::customClaims($customPayload)->fromUser($manager);
+
+                $manager->role = 'manager';
+                $manager->token = $token;
+
+                return response()->json([
+                    'message' => 'Login successful',
+                    'user' => $manager
+                ]);
+            }
+        }
+
+
+        $assistant = Assistant::whereHas('user', function ($query) use ($email) {
+            $query->where('email', $email);
+        })->with('user', 'permissions')->first();
+
+        if ($assistant && Hash::check($password, $assistant->user->password)) {
+
+            $customPayload = ['guard' => 'assistant'];
+            $token = JWTAuth::customClaims($customPayload)->fromUser($assistant);
+
+
+            $user = $assistant->user;
+
+
+            $user->role = 'assistant';
+            $user->permissions = $assistant->permissions->pluck('name');
+            $user->token = $token;
+
+            return response()->json([
+                'message' => 'Login successful',
+                'user' => $user
+            ], 200);
+        }
+
+
+
+        return response()->json(['message' => 'Invalid credentials'], 401);
     }
 
-    // === 3. تحقق من المساعد ===
- $assistant = Assistant::whereHas('user', function ($query) use ($email) {
-    $query->where('email', $email);
-})->with('user', 'permissions')->first();
 
-if ($assistant && Hash::check($password, $assistant->user->password)) {
-    // التوكن يطلع من الـ Assistant نفسه (حتى الحارس assistant يتعرف عليه)
-    $customPayload = ['guard' => 'assistant'];
-    $token = JWTAuth::customClaims($customPayload)->fromUser($assistant);
+    public function listSectionsManager()
+    {
+        $sections = Section::select('id', 'name')
+            ->where('id', '!=', 1)
+            ->get()
+            ->map(function ($section) {
+                return [
+                    'id'   => $section->id,
+                    'name' => $section->name,
+                ];
+            });
 
-    // جبنا الـ User المرتبط بالمساعد
-    $user = $assistant->user;
-
-    // أضفنا role + permissions + token
-    $user->role = 'assistant';
-    $user->permissions = $assistant->permissions->pluck('name');
-    $user->token = $token;
-
-    return response()->json([
-        'message' => 'Login successful',
-        'user' => $user
-    ], 200);
-}
-
-
-
-    return response()->json(['message' => 'Invalid credentials'], 401);
-}
-
-
- public function listSectionsManager()
-{
-    $sections = Section::select('id', 'name')
-        ->where('id', '!=', 1) // تجاهل القسم الأول
-        ->get()
-        ->map(function ($section) {
-            return [
-                'id'   => $section->id,
-                'name' => $section->name,
-            ];
-        });
-
-    return response()->json([
-        'message'  => 'Section list retrieved successfully.',
-        'sections' => $sections,
-    ]);
-}
+        return response()->json([
+            'message'  => 'Section list retrieved successfully.',
+            'sections' => $sections,
+        ]);
+    }
     public function addManager(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'email'             => 'required|string|email|max:255|unique:managers',
             'section_id'            => 'required|exists:sections,id',
-            'name'              =>'required|string',
-            'image'=>'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            'name'              => 'required|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
 
         ]);
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
-
         }
 
-          $profileImage = null;
-           if ($request->hasFile('image')) {
-               $profileImage = $request->file('image')->store('profile_images', 'public');
-           }
+        $profileImage = null;
+        if ($request->hasFile('image')) {
+            $profileImage = $request->file('image')->store('profile_images', 'public');
+        }
         $verificationCode = rand(100000, 999999);
         $expiresAt = Carbon::now()->addMinutes(10);
 
         $manager = Manager::create([
             'email'             => $request->email,
-            'name'              =>$request->name,
-            'image'             =>$profileImage,
+            'name'              => $request->name,
+            'image'             => $profileImage,
             'section_id'       => $request->section_id,
             'must_change_password' => true,
             'verification_code' => $verificationCode,
             'code_expires_at' => $expiresAt,
-            'password' => bcrypt(Str::random(10)), // مؤقت
+            'password' => bcrypt(Str::random(10)),
 
         ]);
 
 
-            Mail::to($manager->email)->send(new ManagerInvitationMail($manager));
+        Mail::to($manager->email)->send(new ManagerInvitationMail($manager));
 
-  return response()->json([
-    'message' => 'Manager created and email sent.',
-    'manager' => [
-        'email'             => $manager->email,
-        'name'              => $manager->name,
-        'image'             => $manager->image ? url("storage/" . $manager->image) : null,
-        'section' => [
-    'id' => $manager->section_id,
-    'name' => optional($manager->section)->name, // assuming العلاقة معرفة
-],
-        'must_change_password' => $manager->must_change_password,
-        'verification_code' => $manager->verification_code,
-        'code_expires_at'   => $manager->code_expires_at,
-       
-    ]
-]);
+        return response()->json([
+            'message' => 'Manager created and email sent.',
+            'manager' => [
+                'email'             => $manager->email,
+                'name'              => $manager->name,
+                'image'             => $manager->image ? url("storage/" . $manager->image) : null,
+                'section' => [
+                    'id' => $manager->section_id,
+                    'name' => optional($manager->section)->name,
+                ],
+                'must_change_password' => $manager->must_change_password,
+                'verification_code' => $manager->verification_code,
+                'code_expires_at'   => $manager->code_expires_at,
+
+            ]
+        ]);
     }
 
 
     public function deleteManager($id)
     {
-        // نتحقق أن المستخدم هو مدير
+
         $manager = Manager::find($id);
 
         if (!$manager) {
@@ -190,21 +189,21 @@ if ($assistant && Hash::check($password, $assistant->user->password)) {
 
     public function showAllManagers()
     {
-        // جلب كل مدراء جدول managers مع معلومات المستخدم والوظيفة
+
         $managers = Manager::get();
 
         $result = $managers->map(function ($manager) {
 
             return [
                 'id' => $manager->id,
-                'name'=>$manager->name,
-                "image" => $manager->image ? url("storage/".$manager->image) : null,
+                'name' => $manager->name,
+                "image" => $manager->image ? url("storage/" . $manager->image) : null,
                 'email' => $manager->email,
                 'email_verified_at' => $manager->email_verified_at,
                 'section' => [
-    'id' => $manager->section_id,
-    'name' => optional($manager->section)->name, // assuming العلاقة معرفة
-],
+                    'id' => $manager->section_id,
+                    'name' => optional($manager->section)->name,
+                ],
             ];
         });
 
@@ -214,7 +213,7 @@ if ($assistant && Hash::check($password, $assistant->user->password)) {
 
     public function showManager($managerId)
     {
-        // نجلب سجل المدير حسب الـ id من جدول managers مع المستخدم والعلاقة job
+
         $manager = Manager::find($managerId);
 
         if (!$manager) {
@@ -224,15 +223,15 @@ if ($assistant && Hash::check($password, $assistant->user->password)) {
 
 
         return response()->json([
-            'id' => $manager->id,  // هنا id من جدول managers
+            'id' => $manager->id,
             'email' => $manager->email,
-             'name'=>$manager->name,
-             "image" => $manager->image ? url("storage/".$manager->image) : null,
+            'name' => $manager->name,
+            "image" => $manager->image ? url("storage/" . $manager->image) : null,
             'email_verified_at' => $manager->email_verified_at,
             'section' => [
-    'id' => $manager->section_id,
-    'name' => optional($manager->section)->name, // assuming العلاقة معرفة
-],
+                'id' => $manager->section_id,
+                'name' => optional($manager->section)->name,
+            ],
         ]);
     }
 }

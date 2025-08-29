@@ -64,7 +64,7 @@ if (!$job || $job->section_id != $request->section_id) {
             'image'             => $profileImage,
         ]); 
         
-        Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user));
+        Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user->verification_code));
         $token = JWTAuth::fromUser($user);
     
         return response()->json([
@@ -163,7 +163,7 @@ public function resendVerificationCode($user_id)
 
     // 5. إرسال الكود إلى البريد الإلكتروني
    
-        Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user));
+        Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user->verification_code));
 
     // 6. إعادة الاستجابة
     return response()->json([
@@ -309,7 +309,7 @@ public function forgetPassword(Request $request)
     ]);
 
     // 5. إرسال الكود إلى الإيميل
-    Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user));
+    Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user->verification_code));
 
     // 6. استجابة ناجحة
     return response()->json([
@@ -349,7 +349,7 @@ public function confirmResetCode(Request $request)
         'message' => 'Password has been reset successfully.'
     ], 200);
 }
-public function logout(Request $request)
+/*public function logout(Request $request)
 {
     try {
         // الحصول على المستخدم من التوكن
@@ -372,8 +372,31 @@ public function logout(Request $request)
             'error' => $e->getMessage()
         ], 500);
     }
-}
 
+
+}
+*/
+public function logout(Request $request)
+{
+    try {
+        // الحصول على المستخدم من التوكن
+        $user = Auth::guard('api')->user();
+
+        if (!$user) {
+            return response()->json(['message' => 'User not authenticated.'], 401);
+        }
+
+        // إبطال التوكن الحالي
+        JWTAuth::invalidate(JWTAuth::getToken());
+
+        return response()->json(['message' => 'User logged out successfully.'], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Something went wrong.',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
 
 
 }

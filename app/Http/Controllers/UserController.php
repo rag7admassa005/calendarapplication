@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Auth\User;
 
 use App\Mail\AppointmentCancelledMail;
+use App\Mail\AppointmentRescheduledUserMail;
 use App\Mail\InvitationResponsedMail;
 use App\Models\Appointment;
 use App\Models\AppointmentRequestParticipant;
@@ -249,8 +250,15 @@ public function requestAppointment(Request $request)
 
     $manager = $appointment->manager;
     if ($manager && $manager->email) {
-        Mail::to($manager->email)->send(new \App\Mail\AppointmentRequestedMail($user, $appointment));
+    Mail::to($manager->email)->send(new AppointmentRescheduledUserMail($user, $appointment));
+}
+
+// إشعار جميع المشاركين
+foreach ($appointment->participants as $participant) {
+    if ($participant->user && $participant->user->email) {
+        Mail::to($participant->user->email)->send(new AppointmentRescheduledUserMail($user, $appointment));
     }
+}
 
     return response()->json(['message' => 'Appointment rescheduled successfully and is now pending.',$appointment], 200);
 }
@@ -258,9 +266,8 @@ public function requestAppointment(Request $request)
 public function cancelAppointment(Request $request, $id)
 {
     $user = Auth::guard('api')->user();
-    if(!$user)
-    {
-        return response()->json(['message' => 'user is not found '], 404);
+    if (!$user) {
+        return response()->json(['message' => 'User not found'], 404);
     }
 
     $validator = Validator::make($request->all(), [
@@ -281,29 +288,47 @@ public function cancelAppointment(Request $request, $id)
     }
 
     $appointmentTime = Carbon::parse("{$appointment->preferred_date} {$appointment->preferred_start_time}");
+
     if (now()->gt($appointmentTime)) {
         return response()->json(['message' => 'Cannot cancel an appointment that has already started.'], 403);
     }
 
-    // شرط الزمن: لا يُسمح بالإلغاء قبل أقل من 4 ساعات من وقت الموعد
     if (now()->diffInHours($appointmentTime, false) < 4) {
         return response()->json(['message' => 'You can only cancel at least 4 hours before the appointment.'], 403);
     }
 
+    // 1️⃣ تحديث حالة الموعد
     $appointment->status = 'cancelled';
     $appointment->save();
 
+    // 2️⃣ إرسال إشعار للمدير إذا موجود
     $manager = $appointment->manager;
     if ($manager && $manager->email) {
-        Mail::to($manager->email)->send(new AppointmentCancelledMail(
+        Mail::to($manager->email)->send(new \App\Mail\AppointmentCancelledMail(
             $user,
             $appointment,
             $request->reason
         ));
     }
 
-    return response()->json(['message' => 'Appointment cancelled successfully.'], 200);
+    // 3️⃣ إشعار جميع المشاركين قبل الحذف
+    $participants = $appointment->participants; // افترض أن العلاقة موجودة: appointmentRequest->participants
+    foreach ($participants as $participant) {
+        if ($participant->user && $participant->user->email) {
+            Mail::to($participant->user->email)->send(new \App\Mail\AppointmentCancelledMail(
+                $user,
+                $appointment,
+                $request->reason
+            ));
+        }
+    }
+
+    // 4️⃣ حذف جميع المشاركين المرتبطين بالموعد
+    //$appointment->participants()->delete();
+
+    return response()->json(['message' => 'Appointment cancelled successfully and participants notified.'], 200);
 }
+
 
 public function myInvitations()
 {
@@ -341,6 +366,11 @@ public function respondToInvitation(Request $request, $id)
 {
     $user = Auth::guard('api')->user();
 
+    if(!$user)
+    {
+        return response(['message'=>'user is not found'],400);
+    }
+
     // التحقق من وجود الدعوة
     $invitation = Invitation::where('id', $id)
         ->where('invited_user_id', $user->id)
@@ -371,9 +401,10 @@ public function respondToInvitation(Request $request, $id)
     ]);
 
     // إشعار المرسل (اختياري إذا بدك تبقيه)
+   // إرسال الإيميل للمرسل
     if ($invitation->invited_by_type && $invitation->invited_by_id) {
         $sender = $invitation->invited_by_type::find($invitation->invited_by_id);
-        if ($sender && $sender->email) {
+        if ($sender && !empty($sender->email)) {
             Mail::to($sender->email)->send(
                 new \App\Mail\InvitationResponsedMail($user, $invitation)
             );
@@ -480,15 +511,24 @@ public function createAppointmentRequest(Request $request)
     ]);
 
     // 2- إضافة المشاركين إذا موجودين
-    if ($request->has('participants')) {
-        foreach ($request->participants as $participantId) {
-            AppointmentRequestParticipant::create([
-                'appointment_request_id' => $appointmentRequest->id,
-                'user_id' => $participantId,
-                'status' => 'pending',
-            ]);
+   if ($request->has('participants')) {
+    foreach ($request->participants as $participantId) {
+        $participant = User::find($participantId);
+
+        AppointmentRequestParticipant::create([
+            'appointment_request_id' => $appointmentRequest->id,
+            'user_id' => $participantId,
+            'status' => 'pending',
+        ]);
+
+        // إرسال ايميل
+        if ($participant && $participant->email) {
+            Mail::to($participant->email)
+                  ->send(new \App\Mail\AppointmentRequestUsersMail($appointmentRequest, $participant->name));
         }
     }
+}
+
 
     return response()->json([
         'message' => 'Appointment request created successfully',
@@ -526,6 +566,10 @@ if (!$user) {
     $participant->update([
         'status' => $request->status,
     ]);
+
+    // إرسال إيميل للي بعت الطلب
+Mail::to($participant->appointmentRequest->user->email)
+     ->send(new \App\Mail\AppointmentRequestResponseMail($participant, $request->status));
 
     return response()->json([
         'message' => 'Response submitted successfully',
@@ -578,6 +622,19 @@ public function getMyIncomingRequests()
 
 
 
+public function AllAppointments()
+{
+    $user = Auth::guard('api')->user();
+
+    $appointments = AppointmentRequest::where('user_id', $user->id)
+        ->select('preferred_date', 'preferred_start_time', 'preferred_end_time', 'status', 'reason')
+        ->orderBy('preferred_date', 'desc')
+        ->get();
+
+    return response()->json([
+        'appointments' => $appointments
+    ]);
+}
 
 
 
